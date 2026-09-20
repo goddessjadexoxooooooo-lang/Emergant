@@ -6,8 +6,9 @@ import Landing from "@/pages/Landing";
 import AuthPage from "@/pages/AuthPage";
 import TributeFlow from "@/pages/TributeFlow";
 import MemberDashboard from "@/pages/MemberDashboard";
-import AdminDashboard from "@/pages/AdminDashboard";
 import AuthCallback from "@/pages/AuthCallback";
+import CreatorApp from "@/pages/CreatorApp";
+import CreatorProfile from "@/pages/CreatorProfile";
 
 function FullScreenLoader() {
   return (
@@ -36,8 +37,9 @@ function AppRoutes() {
       <Route path="/admin-login" element={<AuthPage mode="admin" />} />
       <Route path="/join" element={<Protected><TributeFlow /></Protected>} />
       <Route path="/one-time" element={<TributeFlow oneTime />} />
+      <Route path="/profile" element={<CreatorProfile />} />
       <Route path="/dashboard" element={<Protected><MemberDashboard /></Protected>} />
-      <Route path="/admin" element={<Protected admin><AdminDashboard /></Protected>} />
+      <Route path="/admin" element={<Protected admin><CreatorApp /></Protected>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

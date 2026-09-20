@@ -1,85 +1,65 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AnimatePresence, motion } from "framer-motion";
-import {
-  ArrowLeft, ArrowRight, Check, Heart, Repeat, CalendarDays, CalendarClock,
-  CalendarRange, ExternalLink, ShieldCheck, Crown,
-} from "lucide-react";
+import { motion } from "framer-motion";
+import { ChevronLeft, Check, Sparkles, ArrowRight } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
-import { PAYMENT_METHODS, getMethod } from "@/lib/paymentMethods";
-import { Navbar } from "@/components/Brand";
+import {
+  CHECKOUT_METHODS, getMethodInfo, AMOUNT_PRESETS, TIER_MIN, TIER_MAX, tierForAmount,
+} from "@/lib/paymentMethods";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
 
-const AMOUNTS = [5, 10, 25, 50, 100];
-const RHYTHMS = [
-  { key: "one-time", label: "One-time", desc: "A single tribute", icon: Heart },
-  { key: "weekly", label: "Weekly", desc: "Every week", icon: CalendarDays },
-  { key: "monthly", label: "Monthly", desc: "Every month", icon: CalendarClock },
-  { key: "yearly", label: "Yearly", desc: "Every year", icon: CalendarRange },
+const FREQS = [
+  { key: "weekly", label: "Weekly" },
+  { key: "bi-weekly", label: "Bi-weekly" },
+  { key: "monthly", label: "Monthly" },
+  { key: "one-time", label: "One-time" },
 ];
-
-const slide = { enter: { opacity: 0, y: 20 }, center: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -20 } };
 
 export default function TributeFlow({ oneTime = false }) {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [step, setStep] = useState(0);
-  const [amount, setAmount] = useState(25);
-  const [custom, setCustom] = useState("");
-  const [rhythm, setRhythm] = useState(oneTime ? "one-time" : null);
-  const [methodKey, setMethodKey] = useState("venmo");
+  const [amount, setAmount] = useState(50);
+  const [frequency, setFrequency] = useState(oneTime ? "one-time" : "monthly");
+  const [methodKey, setMethodKey] = useState("stripe");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
 
-  const effectiveAmount = custom ? parseFloat(custom) : amount;
-  const validAmount = effectiveAmount && effectiveAmount >= 1;
-  const method = getMethod(methodKey);
-  const payLink = method.supportsAmount ? method.link(Number(effectiveAmount) || 0) : method.link();
+  const tier = tierForAmount(amount);
+  const pct = Math.min(100, Math.max(0, ((amount - TIER_MIN) / (TIER_MAX - TIER_MIN)) * 100));
+  const freqLabel = frequency === "one-time" ? "one-time" : frequency;
+  const method = getMethodInfo(methodKey);
 
-  const goNext = () => { if (step === 0 && oneTime) { setStep(2); return; } setStep((s) => s + 1); };
-  const goBack = () => {
-    if (step === 2 && oneTime) { setStep(0); return; }
-    if (step === 0) { navigate(user ? "/dashboard" : "/"); return; }
-    setStep((s) => s - 1);
-  };
-
-  const beginDevotion = async () => {
+  const pay = async () => {
+    if (!user && frequency !== "one-time") { navigate("/login"); return; }
     setBusy(true);
     try {
-      await api.post("/membership/setup", {
-        amount: Number(effectiveAmount), frequency: rhythm, method: methodKey,
-      });
-      toast.success("Your devotion has begun. 🖤");
-      navigate("/dashboard");
-    } catch { toast.error("Could not start membership."); setBusy(false); }
-  };
-
-  const markOneTime = async () => {
-    setBusy(true);
-    try {
-      if (user) await api.post("/tributes/self-report", { amount: Number(effectiveAmount), method: methodKey });
-      setDone({ amount: Number(effectiveAmount) });
-    } catch { toast.error("Could not log tribute."); }
-    finally { setBusy(false); }
+      if (method.link) window.open(method.link(amount), "_blank", "noopener,noreferrer");
+      if (frequency === "one-time") {
+        if (user) await api.post("/tributes/self-report", { amount, method: methodKey });
+        setDone({ amount, frequency });
+      } else {
+        await api.post("/membership/setup", { amount, frequency, method: methodKey });
+        toast.success("Your devotion has begun. 🖤");
+        navigate("/dashboard");
+      }
+    } catch { toast.error("Something went wrong. Please try again."); setBusy(false); }
   };
 
   if (done) {
     return (
       <div className="min-h-screen bg-background">
-        <Navbar />
-        <div className="mx-auto max-w-2xl px-5 py-20 text-center">
+        <div className="mx-auto max-w-md px-6 py-24 text-center">
           <motion.div initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
             transition={{ type: "spring", stiffness: 200, damping: 16 }}
             className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-primary text-primary-foreground shadow-jade-lg">
             <Check className="h-10 w-10" />
           </motion.div>
           <h1 className="mt-8 font-display text-4xl font-bold">Tribute received</h1>
-          <p className="mt-3 text-lg text-muted-foreground">Thank you for your one-time tribute of ${done.amount.toFixed(2)} to your Goddess.</p>
-          <Button data-testid="tribute-done-btn" onClick={() => navigate(user ? "/dashboard" : "/")}
-            className="mt-10 h-12 rounded-full px-7 shadow-jade">{user ? "View my dashboard" : "Back home"}</Button>
+          <p className="mt-3 text-lg text-muted-foreground">Thank you for your ${done.amount.toFixed(2)} tribute to your Goddess.</p>
+          <Button data-testid="checkout-done-btn" onClick={() => navigate(user ? "/dashboard" : "/")}
+            className="mt-10 h-12 rounded-full px-7 shadow-jade">{user ? "View my membership" : "Back home"}</Button>
         </div>
       </div>
     );
@@ -87,147 +67,109 @@ export default function TributeFlow({ oneTime = false }) {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-      <div className="mx-auto max-w-2xl px-5 py-10 sm:py-14">
-        <div className="mb-8 flex items-center gap-2">
-          {(oneTime ? [0, 2] : [0, 1, 2]).map((s) => (
-            <div key={s} className={`h-1.5 flex-1 rounded-full transition-colors ${step >= s ? "bg-primary" : "bg-border"}`} />
-          ))}
+      <div className="mx-auto max-w-md min-h-screen bg-background pb-28">
+        {/* app bar */}
+        <div className="sticky top-0 z-30 flex items-center justify-between bg-background/90 px-5 py-4 backdrop-blur-xl">
+          <button data-testid="checkout-back" onClick={() => navigate(user ? "/dashboard" : "/")} className="grid h-9 w-9 place-items-center rounded-full hover:bg-muted">
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <h1 className="font-display text-xl font-bold">Checkout</h1>
+          <span className="w-9" />
         </div>
 
-        <button data-testid="tribute-back-btn" onClick={goBack}
-          className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" /> Back
-        </button>
+        <div className="px-5">
+          {/* amount */}
+          <p className="mt-2 text-sm font-semibold text-muted-foreground">Your Amount</p>
+          <p className="mt-1 font-display text-6xl font-bold" data-testid="checkout-amount">
+            <span className="text-primary">$</span>{amount.toLocaleString()}
+          </p>
 
-        <div className="rounded-3xl bg-card p-6 sm:p-10 shadow-jade">
-          <AnimatePresence mode="wait">
-            {step === 0 && (
-              <motion.div key="amount" variants={slide} initial="enter" animate="center" exit="exit" transition={{ duration: 0.3 }}>
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Your tribute</span>
-                <h2 className="mt-3 font-display text-3xl font-semibold">Choose your tribute</h2>
-                <p className="mt-2 text-muted-foreground">How much will you offer your Goddess?</p>
-                <div className="mt-7 grid grid-cols-3 gap-3" data-testid="amount-grid">
-                  {AMOUNTS.map((a) => {
-                    const active = !custom && amount === a;
-                    return (
-                      <button key={a} data-testid={`amount-${a}`} onClick={() => { setAmount(a); setCustom(""); }}
-                        className={`rounded-2xl border-2 py-5 text-xl font-semibold transition-all hover:-translate-y-0.5 ${
-                          active ? "border-primary bg-primary/10 text-primary" : "border-border bg-white text-foreground"
-                        }`}>${a}</button>
-                    );
-                  })}
-                  <div className="col-span-3 mt-2">
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg text-muted-foreground">$</span>
-                      <Input id="custom" data-testid="amount-custom" type="number" min="1" step="1"
-                        value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="Custom amount"
-                        className="h-12 rounded-2xl bg-white pl-8 text-lg" />
-                    </div>
-                  </div>
-                </div>
-                <Button data-testid="amount-continue-btn" disabled={!validAmount} onClick={goNext}
-                  className="mt-8 h-12 w-full rounded-full text-base shadow-jade transition-transform hover:-translate-y-0.5">
-                  Continue <ArrowRight className="ml-1 h-5 w-5" />
-                </Button>
-              </motion.div>
-            )}
+          <div className="mt-5 grid grid-cols-4 gap-2.5" data-testid="amount-grid">
+            {AMOUNT_PRESETS.map((a) => {
+              const active = amount === a;
+              return (
+                <button key={a} data-testid={`amount-${a}`} onClick={() => setAmount(a)}
+                  className={`rounded-2xl border-2 py-3 text-sm font-bold transition-all hover:-translate-y-0.5 ${
+                    active ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-foreground"
+                  }`}>${a >= 1000 ? "1,000" : a}</button>
+              );
+            })}
+          </div>
 
-            {step === 1 && (
-              <motion.div key="rhythm" variants={slide} initial="enter" animate="center" exit="exit" transition={{ duration: 0.3 }}>
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Your rhythm</span>
-                <h2 className="mt-3 font-display text-3xl font-semibold">How often will you serve?</h2>
-                <p className="mt-2 text-muted-foreground">Give once, or pledge a recurring tribute.</p>
-                <div className="mt-7 grid gap-3" data-testid="rhythm-grid">
-                  {RHYTHMS.map((r) => {
-                    const active = rhythm === r.key;
-                    return (
-                      <button key={r.key} data-testid={`rhythm-${r.key}`} onClick={() => setRhythm(r.key)}
-                        className={`flex items-center gap-4 rounded-2xl border-2 p-4 text-left transition-all hover:-translate-y-0.5 ${
-                          active ? "border-primary bg-primary/10" : "border-border bg-white"
-                        }`}>
-                        <span className={`grid h-11 w-11 place-items-center rounded-xl ${active ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}>
-                          <r.icon className="h-5 w-5" />
-                        </span>
-                        <span className="flex-1">
-                          <span className="block font-semibold">{r.label}</span>
-                          <span className="block text-sm text-muted-foreground">{r.desc}</span>
-                        </span>
-                        {active && <Check className="h-5 w-5 text-primary" />}
-                      </button>
-                    );
-                  })}
-                </div>
-                <Button data-testid="rhythm-continue-btn" disabled={!rhythm} onClick={goNext}
-                  className="mt-8 h-12 w-full rounded-full text-base shadow-jade transition-transform hover:-translate-y-0.5">
-                  Continue <ArrowRight className="ml-1 h-5 w-5" />
-                </Button>
-              </motion.div>
-            )}
+          {/* tier bar */}
+          <div className="mt-5">
+            <div className="flex justify-center">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-4 py-1.5 text-sm font-bold text-primary" data-testid="tier-pill">
+                <Sparkles className="h-4 w-4" /> {tier} tier
+              </span>
+            </div>
+            <div className="mt-3 h-2 rounded-full bg-muted">
+              <div className="h-2 rounded-full bg-gradient-to-r from-[#c11a54] to-[#FF4E88] transition-all" style={{ width: `${pct}%` }} />
+            </div>
+            <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+              <span>${TIER_MIN}</span><span>${TIER_MAX.toLocaleString()}</span>
+            </div>
+          </div>
 
-            {step === 2 && (
-              <motion.div key="pay" variants={slide} initial="enter" animate="center" exit="exit" transition={{ duration: 0.3 }}>
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Your way to serve</span>
-                <h2 className="mt-3 font-display text-3xl font-semibold">
-                  {rhythm === "one-time" ? "Send your tribute" : "Pledge your devotion"}
-                </h2>
+          {/* frequency */}
+          {!oneTime && (
+            <>
+              <p className="mt-7 text-sm font-semibold">Billing Frequency</p>
+              <div className="mt-3 grid grid-cols-2 gap-2.5" data-testid="frequency-grid">
+                {FREQS.map((f) => {
+                  const active = frequency === f.key;
+                  return (
+                    <button key={f.key} data-testid={`frequency-${f.key}`} onClick={() => setFrequency(f.key)}
+                      className={`rounded-2xl border-2 py-3.5 text-sm font-semibold transition-all hover:-translate-y-0.5 ${
+                        active ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-foreground"
+                      }`}>{f.label}</button>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
-                <div className="mt-6 rounded-2xl bg-accent p-5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Amount</span>
-                    <span className="text-2xl font-bold">${effectiveAmount.toFixed(2)}</span>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between">
-                    <span className="text-muted-foreground">Rhythm</span>
-                    <span className="inline-flex items-center gap-1.5 font-medium capitalize">
-                      {rhythm !== "one-time" && <Repeat className="h-4 w-4 text-primary" />}
-                      {rhythm?.replace("-", " ")}
-                    </span>
-                  </div>
-                </div>
+          {/* payment methods */}
+          <p className="mt-7 text-sm font-semibold">Payment Method</p>
+          <div className="mt-3 space-y-2.5" data-testid="method-list">
+            {CHECKOUT_METHODS.map((m) => {
+              const info = getMethodInfo(m.key);
+              const active = methodKey === m.key;
+              return (
+                <button key={m.key} data-testid={`method-${m.key}`} onClick={() => setMethodKey(m.key)}
+                  className={`flex w-full items-center gap-3.5 rounded-2xl border-2 p-3.5 text-left transition-all hover:-translate-y-0.5 ${
+                    active ? "border-primary bg-primary/5 shadow-jade" : "border-border bg-card"
+                  }`}>
+                  <span className="grid h-11 w-11 place-items-center rounded-xl text-lg font-bold text-white" style={{ backgroundColor: info.color }}>
+                    {info.symbol || info.label[0]}
+                  </span>
+                  <span className="flex-1">
+                    <span className="block font-bold">{info.label}</span>
+                    <span className="block text-sm text-muted-foreground">{m.sub}</span>
+                  </span>
+                  <span className={`grid h-6 w-6 place-items-center rounded-full border-2 ${active ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
+                    {active && <Check className="h-3.5 w-3.5" />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-                <p className="mt-6 font-semibold">Choose how you'll send it</p>
-                <div className="mt-3 grid grid-cols-5 gap-2.5" data-testid="method-grid">
-                  {PAYMENT_METHODS.map((m) => {
-                    const active = methodKey === m.key;
-                    return (
-                      <button key={m.key} data-testid={`method-${m.key}`} onClick={() => setMethodKey(m.key)}
-                        className={`relative grid aspect-square place-items-center rounded-2xl border-2 transition-all hover:-translate-y-0.5 ${
-                          active ? "border-primary bg-white shadow-jade" : "border-transparent bg-muted"
-                        }`}>
-                        <span className="grid h-11 w-11 place-items-center rounded-xl font-bold text-white text-lg" style={{ backgroundColor: m.color }}>{m.symbol}</span>
-                        {active && <span className="absolute -top-1.5 -right-1.5 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground"><Check className="h-3 w-3" /></span>}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  Sending to <span className="font-semibold text-foreground">{method.handle}</span> on {method.label}
-                </p>
-
-                {rhythm === "one-time" ? (
-                  <div className="mt-6 grid gap-2.5">
-                    <Button data-testid="open-method-btn" onClick={() => window.open(payLink, "_blank", "noopener,noreferrer")}
-                      className="h-12 rounded-full text-white shadow-jade" style={{ backgroundColor: method.color }}>
-                      Open {method.label} <ExternalLink className="ml-1.5 h-4 w-4" />
-                    </Button>
-                    <Button data-testid="mark-onetime-btn" onClick={markOneTime} disabled={busy}
-                      className="h-13 rounded-full text-base shadow-jade transition-transform hover:-translate-y-0.5">
-                      <Check className="mr-1.5 h-5 w-5" /> {busy ? "Logging…" : "I've sent it — mark paid"}
-                    </Button>
-                  </div>
-                ) : (
-                  <Button data-testid="begin-devotion-btn" onClick={beginDevotion} disabled={busy}
-                    className="mt-6 h-13 w-full rounded-full text-base shadow-jade transition-transform hover:-translate-y-0.5">
-                    <Crown className="mr-1.5 h-5 w-5" /> {busy ? "Please wait…" : "Begin my devotion"}
-                  </Button>
-                )}
-                <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
-                  <ShieldCheck className="h-3.5 w-3.5" /> Self-reported. We never touch your money.
-                </p>
-              </motion.div>
-            )}
-          </AnimatePresence>
+        {/* sticky footer */}
+        <div className="fixed bottom-0 left-1/2 z-30 w-[min(28rem,100%)] -translate-x-1/2 border-t border-border bg-background/95 px-5 py-4 backdrop-blur-xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground">You'll pay</p>
+              <p className="font-display text-lg font-bold">
+                ${amount.toFixed(2)} <span className="text-sm font-normal text-muted-foreground">/ {freqLabel}</span>
+              </p>
+            </div>
+            <Button data-testid="pay-join-btn" onClick={pay} disabled={busy}
+              className="h-13 rounded-full px-7 text-base shadow-jade transition-transform hover:-translate-y-0.5">
+              {busy ? "Please wait…" : frequency === "one-time" ? "Send Tribute" : "Pay & Join"} <ArrowRight className="ml-1 h-5 w-5" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>

@@ -382,7 +382,7 @@ async def my_tributes(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # Membership (self-reported tribute model)
 # ---------------------------------------------------------------------------
-FREQ_DAYS = {"weekly": 7, "monthly": 30, "yearly": 365}
+FREQ_DAYS = {"weekly": 7, "bi-weekly": 14, "biweekly": 14, "monthly": 30, "yearly": 365}
 
 
 def compute_tier(amount: float) -> str:
@@ -542,6 +542,218 @@ async def admin_stats(admin: dict = Depends(require_admin)):
 
 
 # ---------------------------------------------------------------------------
+# Creator (DOM / Goddess) side
+# ---------------------------------------------------------------------------
+SEED_PLANS = [
+    {"id": "plan_cycle", "name": "The Jade Cycle", "price": 50, "subscribers": 28, "cadence": "Every 2 weeks", "icon": "leaf"},
+    {"id": "plan_plan", "name": "The Jade Plan", "price": 150, "subscribers": 41, "cadence": "Monthly", "icon": "crown"},
+    {"id": "plan_edition", "name": "The Edition", "price": 200, "subscribers": 12, "cadence": "Special tribute", "icon": "diamond"},
+]
+
+SEED_SUBSCRIBERS = [
+    {"id": "sub_mr", "name": "Marcus R.", "initials": "MR", "handle": "@devoted_m", "plan_name": "The Jade Plan", "amount": 150, "status": "paid", "reminder_group": "due_4_7", "due_text": "due in 26d", "sort": 0},
+    {"id": "sub_et", "name": "Ellis T.", "initials": "ET", "handle": "@ellis.t", "plan_name": "The Jade Cycle", "amount": 50, "status": "due", "reminder_group": "due_1_3", "due_text": "due in 2d", "sort": 1},
+    {"id": "sub_kn", "name": "Kai N.", "initials": "KN", "handle": "@kaisubmits", "plan_name": "The Edition", "amount": 200, "status": "overdue", "reminder_group": "overdue", "due_text": "4d overdue", "sort": 2},
+    {"id": "sub_dw", "name": "Dominic W.", "initials": "DW", "handle": "@dominic.w", "plan_name": "The Jade Plan", "amount": 150, "status": "paid", "reminder_group": "due_4_7", "due_text": "due in 18d", "sort": 3},
+    {"id": "sub_tb", "name": "Theo B.", "initials": "TB", "handle": "@theo_serves", "plan_name": "The Jade Cycle", "amount": 50, "status": "due", "reminder_group": "due_1_3", "due_text": "due in 5d", "sort": 4},
+    {"id": "sub_rp", "name": "Rowan P.", "initials": "RP", "handle": "@rowan.p", "plan_name": "The Jade Cycle", "amount": 50, "status": "overdue", "reminder_group": "overdue", "due_text": "11d overdue", "sort": 5},
+    {"id": "sub_sh", "name": "Silas H.", "initials": "SH", "handle": "@silas.h", "plan_name": "The Edition", "amount": 200, "status": "paid", "reminder_group": "due_4_7", "due_text": "due in 30d", "sort": 6},
+]
+
+SEED_PAYMENTS = [
+    {"id": "pay_1", "name": "Marcus R.", "method": "PayPal", "when": "2h ago", "amount": 150, "sort": 0},
+    {"id": "pay_2", "name": "Silas H.", "method": "Cash App", "when": "9h ago", "amount": 200, "sort": 1},
+    {"id": "pay_3", "name": "Dominic W.", "method": "Venmo", "when": "Yesterday", "amount": 150, "sort": 2},
+    {"id": "pay_4", "name": "Ava L.", "method": "YouPay", "when": "Yesterday", "amount": 25, "sort": 3},
+    {"id": "pay_5", "name": "Theo B.", "method": "Throne", "when": "2d ago", "amount": 50, "sort": 4},
+]
+
+SEED_INBOX = [
+    {"id": "msg_1", "name": "Marcus R.", "initials": "MR", "text": "Thank you Goddess, tribute sent 🙏", "when": "2h ago"},
+    {"id": "msg_2", "name": "Theo B.", "initials": "TB", "text": "May I have permission to serve more?", "when": "5h ago"},
+    {"id": "msg_3", "name": "Kai N.", "initials": "KN", "text": "I'm sorry for being late, Goddess. It won't happen again.", "when": "1d ago"},
+]
+
+SEED_REQUESTS = [
+    {"id": "req_mr", "name": "Marcus R.", "initials": "MR", "plan_name": "The Jade Plan", "status": "pending", "sort": 0},
+    {"id": "req_et", "name": "Ellis T.", "initials": "ET", "plan_name": "The Jade Cycle", "status": "pending", "sort": 1},
+    {"id": "req_kn", "name": "Kai N.", "initials": "KN", "plan_name": "The Edition", "status": "pending", "sort": 2},
+]
+
+
+async def seed_creator():
+    if await db.creator_plans.count_documents({}) == 0:
+        await db.creator_plans.insert_many([dict(p) for p in SEED_PLANS])
+    if await db.creator_subscribers.count_documents({}) == 0:
+        await db.creator_subscribers.insert_many([dict(s) for s in SEED_SUBSCRIBERS])
+    if await db.creator_payments.count_documents({}) == 0:
+        await db.creator_payments.insert_many([dict(p) for p in SEED_PAYMENTS])
+    if await db.creator_inbox.count_documents({}) == 0:
+        await db.creator_inbox.insert_many([dict(m) for m in SEED_INBOX])
+    if await db.creator_requests.count_documents({}) == 0:
+        await db.creator_requests.insert_many([dict(r) for r in SEED_REQUESTS])
+    # backfill handles for existing subscriber docs
+    for s in SEED_SUBSCRIBERS:
+        await db.creator_subscribers.update_one(
+            {"id": s["id"], "handle": {"$exists": False}}, {"$set": {"handle": s["handle"]}}
+        )
+
+
+class StatusBody(BaseModel):
+    status: str
+
+
+class OverrideBody(BaseModel):
+    action: str
+    reason: str
+
+
+class PlanPriceBody(BaseModel):
+    price: float
+
+
+@api_router.get("/creator/home")
+async def creator_home(admin: dict = Depends(require_admin)):
+    plans = await db.creator_plans.find({}, {"_id": 0}).to_list(50)
+    payments = await db.creator_payments.find({}, {"_id": 0}).sort("sort", 1).to_list(50)
+    active = await db.creator_subscribers.count_documents({})
+    pending = await db.creator_requests.count_documents({"status": "pending"})
+    revenue = sum(p["amount"] for p in payments)
+    return {
+        "stats": {"active_subscribers": active, "payments_this_week": len(payments)},
+        "revenue_total": revenue,
+        "pending_requests": pending,
+        "recent_payments": payments,
+        "plans": plans,
+        "plans_active": len(plans),
+    }
+
+
+@api_router.get("/creator/requests")
+async def creator_requests(admin: dict = Depends(require_admin)):
+    reqs = await db.creator_requests.find({"status": "pending"}, {"_id": 0}).sort("sort", 1).to_list(100)
+    return {"requests": reqs}
+
+
+@api_router.post("/creator/requests/{req_id}/{action}")
+async def creator_request_action(req_id: str, action: str, admin: dict = Depends(require_admin)):
+    if action not in ("approve", "decline"):
+        raise HTTPException(status_code=400, detail="Invalid action")
+    status = "approved" if action == "approve" else "declined"
+    res = await db.creator_requests.update_one({"id": req_id}, {"$set": {"status": status}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Request not found")
+    remaining = await db.creator_requests.count_documents({"status": "pending"})
+    return {"ok": True, "status": status, "pending": remaining}
+
+
+@api_router.get("/creator/subscribers")
+async def creator_subscribers(admin: dict = Depends(require_admin)):
+    subs = await db.creator_subscribers.find({}, {"_id": 0}).sort("sort", 1).to_list(200)
+    missed = await db.creator_subscribers.count_documents({"status": "overdue"})
+    return {"subscribers": subs, "missed_count": missed}
+
+
+@api_router.get("/creator/reminders")
+async def creator_reminders(admin: dict = Depends(require_admin)):
+    subs = await db.creator_subscribers.find({}, {"_id": 0}).sort("sort", 1).to_list(200)
+    groups = {"due_1_3": [], "due_4_7": [], "overdue": []}
+    for s in subs:
+        g = s.get("reminder_group")
+        if g in groups:
+            groups[g].append(s)
+    due_this_week = sum(s["amount"] for s in groups["due_1_3"]) + sum(s["amount"] for s in groups["overdue"])
+    return {"due_this_week_total": due_this_week, **groups}
+
+
+@api_router.get("/creator/inbox")
+async def creator_inbox(admin: dict = Depends(require_admin)):
+    msgs = await db.creator_inbox.find({}, {"_id": 0}).to_list(100)
+    return {"messages": msgs}
+
+
+@api_router.post("/creator/subscribers/{sub_id}/remind")
+async def creator_remind_one(sub_id: str, admin: dict = Depends(require_admin)):
+    sub = await db.creator_subscribers.find_one({"id": sub_id}, {"_id": 0})
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    await db.creator_subscribers.update_one({"id": sub_id}, {"$set": {"last_reminded": datetime.now(timezone.utc).isoformat()}})
+    return {"ok": True, "message": f"Reminder sent to {sub['name']}"}
+
+
+@api_router.post("/creator/subscribers/{sub_id}/status")
+async def creator_set_status(sub_id: str, body: StatusBody, admin: dict = Depends(require_admin)):
+    if body.status not in ("paid", "due", "overdue"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    res = await db.creator_subscribers.update_one({"id": sub_id}, {"$set": {"status": body.status}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    sub = await db.creator_subscribers.find_one({"id": sub_id}, {"_id": 0})
+    return {"subscriber": sub}
+
+
+@api_router.post("/creator/subscribers/{sub_id}/override")
+async def creator_override(sub_id: str, body: OverrideBody, admin: dict = Depends(require_admin)):
+    ACTIONS = {
+        "restore_access": ("paid", "Access restored"),
+        "approve_payment_plan": ("paid", "Payment plan approved"),
+        "suspend_account": ("overdue", "Account suspended"),
+        "terminate_account": (None, "Account terminated"),
+    }
+    if body.action not in ACTIONS:
+        raise HTTPException(status_code=400, detail="Invalid action")
+    if not body.reason.strip():
+        raise HTTPException(status_code=400, detail="A reason is required")
+    sub = await db.creator_subscribers.find_one({"id": sub_id}, {"_id": 0})
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    new_status, verb = ACTIONS[body.action]
+    await db.creator_overrides.insert_one({
+        "sub_id": sub_id, "action": body.action, "reason": body.reason.strip(),
+        "at": datetime.now(timezone.utc).isoformat(),
+    })
+    if body.action == "terminate_account":
+        await db.creator_subscribers.delete_one({"id": sub_id})
+    else:
+        await db.creator_subscribers.update_one({"id": sub_id}, {"$set": {"status": new_status}})
+    return {"ok": True, "message": f"{verb} for {sub['name']}"}
+
+
+@api_router.post("/creator/remind-group/{group}")
+async def creator_remind_group(group: str, admin: dict = Depends(require_admin)):
+    if group == "week":
+        q = {"reminder_group": {"$in": ["due_1_3", "overdue"]}}
+    elif group == "overdue":
+        q = {"reminder_group": "overdue"}
+    else:
+        q = {"reminder_group": group}
+    n = await db.creator_subscribers.count_documents(q)
+    await db.creator_subscribers.update_many(q, {"$set": {"last_reminded": datetime.now(timezone.utc).isoformat()}})
+    return {"reminded": n}
+
+
+@api_router.post("/creator/mark-all-unpaid")
+async def creator_mark_all_unpaid(admin: dict = Depends(require_admin)):
+    res = await db.creator_subscribers.update_many({}, {"$set": {"status": "due"}})
+    return {"updated": res.modified_count}
+
+
+@api_router.post("/creator/message-all")
+async def creator_message_all(admin: dict = Depends(require_admin)):
+    n = await db.creator_subscribers.count_documents({})
+    return {"ok": True, "sent": n}
+
+
+@api_router.patch("/creator/plans/{plan_id}")
+async def creator_update_plan(plan_id: str, body: PlanPriceBody, admin: dict = Depends(require_admin)):
+    res = await db.creator_plans.update_one({"id": plan_id}, {"$set": {"price": round(body.price, 2)}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    plan = await db.creator_plans.find_one({"id": plan_id}, {"_id": 0})
+    return {"plan": plan}
+
+
+# ---------------------------------------------------------------------------
 # App wiring
 # ---------------------------------------------------------------------------
 app.include_router(api_router)
@@ -576,6 +788,7 @@ async def startup():
     elif not verify_password(admin_password, existing.get("password_hash", "")):
         await db.users.update_one({"email": admin_email},
                                   {"$set": {"password_hash": hash_password(admin_password), "role": "admin"}})
+    await seed_creator()
 
 
 @app.on_event("shutdown")

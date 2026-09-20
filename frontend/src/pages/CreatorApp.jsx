@@ -397,6 +397,7 @@ function SubsTab() {
 
       <Dialog open={!!active} onOpenChange={(o) => !o && setActive(null)}>
         <DialogContent className="rounded-3xl max-w-md p-0 overflow-hidden">
+          <DialogHeader className="sr-only"><DialogTitle>Subscriber actions</DialogTitle></DialogHeader>
           {active && <OverrideSheet sub={active} onClose={() => setActive(null)} onConfirm={override} />}
         </DialogContent>
       </Dialog>

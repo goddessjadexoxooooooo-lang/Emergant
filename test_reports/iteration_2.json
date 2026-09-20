@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 2 — full backend + frontend verification of the Jade & Co. Findom app (FAN membership + DOM creator). Backend: 22 new pytest cases in test_creator_membership.py (all PASS) covering membership setup/self-report/cancel/auth-gate and creator home/requests/subscribers/plans/reminders/inbox/overrides. Prior 18 tests from iteration 1 still valid. Frontend: Playwright verified admin login -> /admin renders revenue $575, pending-requests-banner (3), 7 active subs, 5 payments/week, plan edit (PATCH), requests view, subs tab (filters + subscriber card -> override sheet with confirm disabled until action+reason -> Restore Access succeeds), remind tab hero '$350'. Admin logout OK. FAN: register -> /dashboard shows no-membership + choose-plan + one-time-link; visiting /admin as member redirects to /dashboard; /join amount-100 -> Gold tier pill, monthly + stripe -> Pay & Join calls /api/membership/setup and shows membership-card ($100 Gold Monthly Active); /profile shows tribute-hero + all 6 quicklinks (paypal, cashapp, venmo, throne, youpay, applepay) with open buttons; one-time flow (amount-25 + frequency-one-time + venmo) opens external tab and shows success screen, then dashboard history has the tribute row 'confirmed'. All flows wired to backend and DB updates verified.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Creator override Dialog", "issues": ["Radix warning: DialogContent requires a DialogTitle for a11y; SubsTab wraps OverrideSheet inside DialogContent without a DialogTitle. Add a VisuallyHidden DialogTitle or set aria-describedby to remove the accessibility warning."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_creator_membership.py",
+    "/app/test_reports/pytest/creator_results.xml"
+  ],
+  "action_items": [
+    "(nit) Add VisuallyHidden DialogTitle inside SubsTab's DialogContent to remove Radix a11y warning; also add a DialogDescription or aria-describedby."
+  ],
+  "critical_code_review_comments": [
+    "CreatorApp.jsx is ~600 lines with multiple tab components; consider splitting into pages/creator/*.jsx modules for maintainability.",
+    "TributeFlow.pay() catches errors but does not reset `busy` on network errors before the toast in every branch; the current catch resets busy only on failure — verify UX when API succeeds but toast fails.",
+    "MemberDashboard.jsx uses .finally to clear loading but does not surface errors from /membership/me; add .catch to show an error state instead of an empty dashboard.",
+    "server.py: single ~800 line module — split membership/creator/paypal routers into separate files for future maintainability.",
+    "compute_tier + tierForAmount are duplicated between backend (server.py) and frontend (paymentMethods.js). If thresholds change one side may drift.",
+    "Override 'terminate_account' immediately deletes the subscriber; consider soft-delete for auditability."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_creator_membership.py (new)"
+  ],
+  "success_rate": { "backend": "100% (22/22 new + 18/18 prior)", "frontend": "100% of tested flows" },
+  "test_credentials": "Admin admin@jadeandco.com / JadeAdmin123! works. Members registered dynamically as TEST_fan_*.",
+  "seed_data_creation": "Registered TEST fan users, called /membership/setup and /tributes/self-report to validate persistence. Note: earlier admin override 'restore_access' on the first subscriber leaves that sub's status flipped to 'paid'. Seeded plan price for the first creator plan was updated to $55 (then reverted for API test); one HomeTab UI edit set the first plan price to 55 and did NOT revert (main agent may want to re-seed if exact seed values matter).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend tests are split into /app/backend/tests/backend_test.py (auth/paypal/admin) and /app/backend/tests/test_creator_membership.py (membership + creator/DOM). Run with: pytest backend/tests/ -v. Frontend Playwright confirmed all data-testids in the review request. Only nit is the Radix Dialog a11y warning on OverrideSheet — non-blocking. Seed data has been mutated (plan_cycle price ~= 55, sub_mr status set to paid via override); revenue still ~$575 (from creator_payments, independent of overrides).",
+  "rca of the issue": "No open issues."
+}

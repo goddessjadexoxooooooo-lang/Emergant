@@ -40,7 +40,7 @@ export default function AdminDashboard() {
       setStats(s.data);
       setMembers(m.data.members);
       setTributes(t.data.tributes);
-    }).finally(() => setLoading(false));
+    }).catch(() => setStats(null)).finally(() => setLoading(false));
   }, []);
 
   return (
@@ -60,6 +60,10 @@ export default function AdminDashboard() {
         {loading ? (
           <div className="py-20 flex justify-center">
             <div className="h-10 w-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+          </div>
+        ) : !stats ? (
+          <div className="py-20 text-center text-muted-foreground" data-testid="admin-load-error">
+            Could not load admin data. Please refresh.
           </div>
         ) : (
           <>

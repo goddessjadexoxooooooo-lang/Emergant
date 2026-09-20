@@ -13,7 +13,7 @@ function fmtDate(iso) {
 }
 
 export default function MemberDashboard() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -38,9 +38,6 @@ export default function MemberDashboard() {
             <button data-testid="member-messages-link" onClick={() => navigate("/messages")} className="grid h-9 w-9 place-items-center rounded-full text-primary hover:bg-muted">
               <MessageCircle className="h-5 w-5" />
             </button>
-            <button data-testid="member-profile-link" onClick={() => navigate("/profile")} className="grid h-9 w-9 place-items-center rounded-full text-primary hover:bg-muted">
-              <Heart className="h-5 w-5 fill-current" />
-            </button>
           </div>
         </div>
 
@@ -51,9 +48,6 @@ export default function MemberDashboard() {
               <h2 className="font-display text-4xl font-bold">Hi{firstName ? `, ${firstName}` : ""},</h2>
               <p className="mt-1 text-muted-foreground">Your Jade Dynasty membership</p>
             </div>
-            <span className="grid h-11 w-11 place-items-center rounded-full bg-primary/10 text-primary">
-              <Heart className="h-5 w-5 fill-current" />
-            </span>
           </div>
 
           {loading ? (
@@ -126,9 +120,6 @@ export default function MemberDashboard() {
               <div className="rounded-2xl bg-card p-8 text-center text-muted-foreground shadow-jade" data-testid="no-payments">No payments yet</div>
             )}
           </div>
-
-          <button data-testid="member-signout" onClick={async () => { await logout(); navigate("/"); }}
-            className="mt-8 w-full py-3 text-center text-sm font-semibold text-muted-foreground hover:text-primary">Sign out</button>
         </div>
       </div>
     </div>

@@ -76,7 +76,7 @@ export default function MemberDashboard() {
               <div className="relative mt-6 grid grid-cols-2 gap-3">
                 <Button data-testid="send-tribute-btn" onClick={() => navigate("/profile")}
                   className="h-12 rounded-full bg-white text-[#4A0E1B] hover:bg-white/90">Send a tribute</Button>
-                <Button data-testid="change-plan-btn" onClick={() => navigate("/join")} variant="outline"
+                <Button data-testid="change-plan-btn" onClick={() => navigate("/plans")} variant="outline"
                   className="h-12 rounded-full border-white/40 bg-transparent text-white hover:bg-white/15 hover:text-white">Change plan</Button>
               </div>
             </motion.div>
@@ -89,7 +89,7 @@ export default function MemberDashboard() {
               </span>
               <h3 className="mt-5 font-display text-2xl font-bold">No active membership</h3>
               <p className="mt-2 text-muted-foreground">Start supporting your favorite creator with a plan that fits you.</p>
-              <Button data-testid="choose-plan-btn" onClick={() => navigate("/join")}
+              <Button data-testid="choose-plan-btn" onClick={() => navigate("/plans")}
                 className="mt-6 h-13 w-full rounded-full text-base shadow-jade transition-transform hover:-translate-y-0.5">
                 <Crown className="mr-1.5 h-5 w-5" /> Choose a Plan
               </Button>

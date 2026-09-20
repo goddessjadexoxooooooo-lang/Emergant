@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ChevronLeft, Check, Sparkles, ArrowRight } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -20,8 +20,11 @@ const FREQS = [
 export default function TributeFlow({ oneTime = false }) {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [amount, setAmount] = useState(50);
-  const [frequency, setFrequency] = useState(oneTime ? "one-time" : "monthly");
+  const [params] = useSearchParams();
+  const presetAmount = parseFloat(params.get("amount"));
+  const presetFreq = params.get("frequency");
+  const [amount, setAmount] = useState(Number.isFinite(presetAmount) ? presetAmount : 50);
+  const [frequency, setFrequency] = useState(oneTime ? "one-time" : (presetFreq || "monthly"));
   const [methodKey, setMethodKey] = useState("stripe");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);

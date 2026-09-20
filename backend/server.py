@@ -438,6 +438,12 @@ async def build_membership(user_id: str):
     }
 
 
+@api_router.get("/plans")
+async def public_plans():
+    plans = await db.membership_plans.find({}, {"_id": 0}).sort("sort", 1).to_list(50)
+    return {"plans": plans}
+
+
 @api_router.get("/membership/me")
 async def membership_me(user: dict = Depends(get_current_user)):
     membership = await build_membership(user["id"])
@@ -580,6 +586,21 @@ SEED_REQUESTS = [
     {"id": "req_kn", "name": "Kai N.", "initials": "KN", "plan_name": "The Edition", "status": "pending", "sort": 2},
 ]
 
+SEED_MEMBERSHIP_PLANS = [
+    {"id": "plan_arrangement", "name": "The Jade Arrangement", "price": 49, "cadence": "weekly", "badge": "Weekly",
+     "desc": "A light weekly touchpoint to stay close.",
+     "features": ["Weekly voice note", "Priority replies", "Members-only drops"], "featured": False, "sort": 0},
+    {"id": "plan_cycle_fan", "name": "The Jade Cycle", "price": 89, "cadence": "bi-weekly", "badge": "Bi-Weekly",
+     "desc": "Deeper access on a two-week rhythm.",
+     "features": ["Everything weekly", "Two custom requests", "Early gallery access"], "featured": False, "sort": 1},
+    {"id": "plan_plan_fan", "name": "The Jade Plan", "price": 149, "cadence": "monthly", "badge": "Monthly",
+     "desc": "The full monthly membership experience.",
+     "features": ["Unlimited chat", "Monthly call", "Custom request queue"], "featured": False, "sort": 2},
+    {"id": "plan_edition_fan", "name": "Jade Edition", "price": 299, "cadence": "one-time", "badge": "One-Time",
+     "desc": "A single unlock of the private edition vault.",
+     "features": ["Lifetime vault access", "Signed digital print", "No recurring charge"], "featured": True, "sort": 3},
+]
+
 
 async def seed_creator():
     if await db.creator_plans.count_documents({}) == 0:
@@ -592,6 +613,8 @@ async def seed_creator():
         await db.creator_inbox.insert_many([dict(m) for m in SEED_INBOX])
     if await db.creator_requests.count_documents({}) == 0:
         await db.creator_requests.insert_many([dict(r) for r in SEED_REQUESTS])
+    if await db.membership_plans.count_documents({}) == 0:
+        await db.membership_plans.insert_many([dict(p) for p in SEED_MEMBERSHIP_PLANS])
     # backfill handles for existing subscriber docs
     for s in SEED_SUBSCRIBERS:
         await db.creator_subscribers.update_one(

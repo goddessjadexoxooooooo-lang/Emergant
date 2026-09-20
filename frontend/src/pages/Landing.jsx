@@ -6,8 +6,6 @@ import { Button } from "@/components/ui/button";
 
 const HERO_IMG =
   "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MDV8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMHBpbmslMjBncmFkaWVudHxlbnwwfHx8fDE3ODk4ODg0NjR8MA&ixlib=rb-4.1.0&q=85";
-const COMMUNITY_IMG =
-  "https://images.unsplash.com/photo-1670899460364-ebc917bac09a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2OTV8MHwxfHNlYXJjaHwxfHxlbGVnYW50JTIwZ2F0aGVyaW5nfGVufDB8fHx8MTc4OTg4ODQ2NHww&ixlib=rb-4.1.0&q=85";
 
 const fade = {
   hidden: { opacity: 0, y: 24 },
@@ -134,11 +132,18 @@ export default function Landing() {
             className="relative"
           >
             <div className="absolute -inset-6 -z-10 rounded-[2.5rem] bg-primary/15 blur-2xl" />
-            <img
-              src={COMMUNITY_IMG}
-              alt="An elegant gathering"
-              className="rounded-[2rem] shadow-jade-lg w-full object-cover aspect-[4/3]"
-            />
+            <div className="relative overflow-hidden rounded-[2rem] shadow-jade-lg aspect-[4/3] bg-gradient-to-br from-[#3d0a17] via-[#c11a54] to-[#ff6fa3] p-10 flex flex-col justify-between">
+              <div className="absolute -top-16 -right-16 h-56 w-56 rounded-full bg-white/10 blur-2xl animate-float-slow" />
+              <Crown className="h-10 w-10 text-white/90" />
+              <div>
+                <p className="font-display text-3xl sm:text-4xl font-semibold leading-tight text-white">
+                  Your amount. Your rhythm. Your way to pay.
+                </p>
+                <p className="mt-4 inline-flex items-center gap-2 text-white/80">
+                  <Heart className="h-4 w-4 fill-current" /> The Jade Dynasty
+                </p>
+              </div>
+            </div>
           </motion.div>
         </div>
       </section>

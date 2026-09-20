@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import {
   BarChart3, Heart, Users, Bell, ArrowDownLeft, Mail, SlidersHorizontal, ArrowRight,
   Search, AlertTriangle, Clock, BadgeCheck, Pencil, Send, Leaf, Crown, Diamond, ChevronRight, ChevronLeft, Plus, X, Check,
+  MessageCircle,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -11,6 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
+import ChatThread from "@/components/ChatThread";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -224,11 +228,11 @@ function HomeTab({ go }) {
 
       {/* footer actions */}
       <div className="space-y-3">
-        <button data-testid="view-fan-inbox" onClick={() => go("inbox")}
+        <button data-testid="view-fan-inbox" onClick={() => go("messages")}
           className="flex w-full items-center gap-3 rounded-3xl bg-card p-4 font-bold text-primary shadow-jade transition-transform hover:-translate-y-0.5">
           <Mail className="h-5 w-5" /> View Fan Inbox <ArrowRight className="ml-auto h-5 w-5" />
         </button>
-        <button data-testid="manage-plans" onClick={() => go("tribute")}
+        <button data-testid="manage-plans" onClick={() => go("plans")}
           className="flex w-full items-center gap-3 rounded-3xl bg-card p-4 font-bold text-primary shadow-jade transition-transform hover:-translate-y-0.5">
           <SlidersHorizontal className="h-5 w-5" /> Manage Plans <ArrowRight className="ml-auto h-5 w-5" />
         </button>
@@ -406,75 +410,154 @@ function SubsTab() {
 }
 
 /* -------------------------------- REMIND TAB ------------------------------- */
-function ReminderRow({ s, color, onRemind }) {
-  const c = REMIND_COLORS[color];
-  return (
-    <div className="flex items-center gap-3.5 px-4 py-4" data-testid={`reminder-${s.id}`}>
-      <Avatar initials={s.initials} />
-      <div className="flex-1">
-        <p className="text-lg font-bold">{s.name}</p>
-        <p className="text-sm text-muted-foreground">${s.amount} · {s.due_text}</p>
-      </div>
-      <button data-testid={`remind-btn-${s.id}`} onClick={() => onRemind(s.id)}
-        className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold transition-colors ${c.btn}`}>
-        <Bell className="h-4 w-4" /> Remind
-      </button>
-    </div>
-  );
+function relTime(iso) {
+  try {
+    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 60) return "now";
+    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+    return `${Math.floor(diff / 86400)}d`;
+  } catch { return ""; }
 }
 
-function ReminderSection({ label, color, items, onRemind, onRemindAll }) {
-  const c = REMIND_COLORS[color];
-  if (!items?.length) return null;
-  return (
-    <div>
-      <div className="mb-3 flex items-center justify-between">
-        <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.16em]">
-          <span className={`h-2.5 w-2.5 rounded-full ${c.dot}`} /> <span className={c.label}>{label}</span>
-        </p>
-        <button data-testid={`remind-all-${color}`} onClick={onRemindAll}
-          className={`rounded-full px-4 py-1.5 text-sm font-bold ${c.all}`}>Remind All</button>
-      </div>
-      <div className="divide-y divide-border/70 rounded-3xl bg-card shadow-jade">
-        {items.map((s) => <ReminderRow key={s.id} s={s} color={color} onRemind={onRemind} />)}
-      </div>
-    </div>
-  );
-}
+const PinkAvatar = ({ initials }) => (
+  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#e14b7a] to-[#c11a54] text-sm font-bold text-white">{initials}</span>
+);
 
 function RemindTab() {
   const [data, setData] = useState(null);
-  const load = () => api.get("/creator/reminders").then((r) => setData(r.data));
+  const [settings, setSettings] = useState(null);
+  const load = () => api.get("/creator/renewals").then((r) => { setData(r.data.renewals); setSettings(r.data.settings); });
   useEffect(() => { load(); }, []);
 
-  const remind = async (id) => { const { data: r } = await api.post(`/creator/subscribers/${id}/remind`); toast.success(r.message); };
-  const remindGroup = async (g, label) => { const { data: r } = await api.post(`/creator/remind-group/${g}`); toast.success(`Reminded ${r.reminded} ${label}.`); };
+  const save = (next) => {
+    setSettings(next);
+    api.post("/creator/reminder-settings", {
+      send_renewal: next.send_renewal, quiet_hours: next.quiet_hours, lead_days: next.lead_days,
+    });
+  };
 
-  if (!data) return <Loader />;
+  if (!data || !settings) return <Loader />;
   return (
-    <div className="space-y-7">
-      <TitleBar title="Tribute Reminders" />
-      {/* hero */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#b01049] via-[#c11a54] to-[#e14b7a] p-6 text-white shadow-jade-lg" data-testid="remind-hero">
-        <div className="absolute top-6 right-6 h-16 w-16 rounded-full bg-gradient-to-br from-[#ffd27a] to-[#ff7a3c] shadow-[0_0_30px_rgba(255,140,60,0.7)]" />
-        <p className="text-sm font-semibold text-white/85">Due This Week</p>
-        <p className="mt-1 font-display text-6xl font-bold">${data.due_this_week_total}</p>
-        <p className="mt-3 text-white/80">Missed tribute reminders go out automatically</p>
-        <Button data-testid="remind-all-week" onClick={() => remindGroup("week", "subscribers due this week")}
-          className="mt-5 h-14 w-full rounded-full bg-white text-lg font-bold text-primary hover:bg-white/90">
-          Remind All Due This Week
-        </Button>
+    <div className="space-y-6">
+      <TitleBar title="Reminders" />
+
+      {/* settings card */}
+      <div className="rounded-3xl bg-card p-5 shadow-jade" data-testid="reminder-settings">
+        <div className="flex items-center justify-between py-2">
+          <div className="pr-4">
+            <p className="font-bold">Send renewal reminders</p>
+            <p className="text-sm text-muted-foreground">Nudge fans before their tribute renews.</p>
+          </div>
+          <Switch data-testid="toggle-send-renewal" checked={settings.send_renewal}
+            onCheckedChange={(v) => save({ ...settings, send_renewal: v })} />
+        </div>
+        <div className="flex items-center justify-between border-t border-border/70 py-2">
+          <div className="pr-4">
+            <p className="font-bold">Respect quiet hours</p>
+            <p className="text-sm text-muted-foreground">No reminders 9pm–9am their time.</p>
+          </div>
+          <Switch data-testid="toggle-quiet-hours" checked={settings.quiet_hours}
+            onCheckedChange={(v) => save({ ...settings, quiet_hours: v })} />
+        </div>
+        <div className="border-t border-border/70 pt-4">
+          <div className="flex items-center justify-between">
+            <p className="font-bold">Remind lead time</p>
+            <p className="font-bold text-primary" data-testid="lead-days-label">{settings.lead_days} days before</p>
+          </div>
+          <Slider data-testid="lead-days-slider" className="mt-4" min={1} max={7} step={1} value={[settings.lead_days]}
+            onValueChange={(v) => setSettings({ ...settings, lead_days: v[0] })}
+            onValueCommit={(v) => save({ ...settings, lead_days: v[0] })} />
+        </div>
       </div>
 
-      <ReminderSection label="Due in 1–3 days" color="amber" items={data.due_1_3}
-        onRemind={remind} onRemindAll={() => remindGroup("due_1_3", "subscribers")} />
-      <ReminderSection label="Due in 4–7 days" color="green" items={data.due_4_7}
-        onRemind={remind} onRemindAll={() => remindGroup("due_4_7", "subscribers")} />
-      <ReminderSection label="Overdue" color="pink" items={data.overdue}
-        onRemind={remind} onRemindAll={() => remindGroup("overdue", "overdue subscribers")} />
+      {/* upcoming renewals */}
+      <div>
+        <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-primary">Upcoming renewals</p>
+        <div className="space-y-3" data-testid="renewals-list">
+          {data.map((r) => (
+            <div key={r.id} data-testid={`renewal-${r.id}`} className="flex items-center gap-3.5 rounded-3xl bg-card p-4 shadow-jade">
+              <PinkAvatar initials={r.initials} />
+              <div className="flex-1">
+                <p className="text-lg font-bold">{r.name}</p>
+                <p className="text-sm text-muted-foreground">{r.plan} · ${r.amount}</p>
+              </div>
+              <div className="text-right">
+                <p className="font-display text-lg font-bold text-primary">in {r.in_days}d</p>
+                <p className="text-xs text-muted-foreground">renews</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
+
+/* ------------------------------- MESSAGES TAB ------------------------------ */
+function MessagesTab() {
+  const [convs, setConvs] = useState(null);
+  const [query, setQuery] = useState("");
+  const [thread, setThread] = useState(null); // {conversation, messages}
+
+  const load = () => api.get("/creator/conversations").then((r) => setConvs(r.data.conversations));
+  useEffect(() => { load(); }, []);
+
+  const openThread = async (id) => {
+    const { data } = await api.get(`/creator/conversations/${id}/messages`);
+    setThread(data);
+  };
+  const send = async (text) => {
+    const { data } = await api.post(`/creator/conversations/${thread.conversation.id}/messages`, { text });
+    setThread((t) => ({ ...t, messages: [...t.messages, data.message] }));
+  };
+  const closeThread = () => { setThread(null); load(); };
+
+  if (thread) {
+    return <ChatThread messages={thread.messages} currentRole="creator" onSend={send}
+      onBack={closeThread} title={thread.conversation.name} />;
+  }
+  if (!convs) return <Loader />;
+  const list = convs.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()));
+
+  return (
+    <div className="space-y-4">
+      <TitleBar title="💗 Admin Inbox" />
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Fan Conversations</p>
+      <div className="relative">
+        <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+        <Input data-testid="inbox-search" value={query} onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search conversations" className="h-13 rounded-full bg-card pl-12 shadow-jade border-transparent" />
+      </div>
+      <div className="space-y-3" data-testid="conversations-list">
+        {list.map((c) => (
+          <button key={c.id} data-testid={`conv-${c.id}`} onClick={() => openThread(c.id)}
+            className="w-full rounded-3xl bg-card p-4 text-left shadow-jade transition-transform hover:-translate-y-0.5">
+            <div className="flex items-center gap-3.5">
+              <div className="relative">
+                <PinkAvatar initials={c.initials} />
+                {c.unread > 0 && <span className="absolute -top-1 -right-1 grid h-5 w-5 place-items-center rounded-full bg-primary text-[11px] font-bold text-white">{c.unread}</span>}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between">
+                  <p className="truncate text-lg font-bold">{c.name}</p>
+                  <span className="ml-2 shrink-0 text-xs text-muted-foreground">{relTime(c.updated_at)}</span>
+                </div>
+                <p className="truncate text-sm text-muted-foreground">{c.last}</p>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
+              <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">{c.plan}</span>
+              <span className="inline-flex items-center gap-1 text-sm font-bold text-primary">Open Full Chat <ChevronRight className="h-4 w-4" /></span>
+            </div>
+          </button>
+        ))}
+        {list.length === 0 && <p className="py-8 text-center text-muted-foreground">No conversations.</p>}
+      </div>
+    </div>
+  );
+}
+
 
 /* ------------------------------- REQUESTS TAB ------------------------------ */
 function RequestsTab({ go }) {
@@ -569,36 +652,51 @@ function TitleBar({ title }) {
 
 const TABS = [
   { key: "home", label: "Home", Icon: BarChart3 },
-  { key: "tribute", label: "Tribute", Icon: Heart },
   { key: "subs", label: "Subs", Icon: Users },
-  { key: "remind", label: "Remind", Icon: Bell },
+  { key: "messages", label: "Messages", Icon: MessageCircle, badge: "messages" },
+  { key: "requests", label: "Requests", Icon: Bell, badge: "requests" },
+  { key: "remind", label: "Remind", Icon: Clock },
+  { key: "plans", label: "Plans", Icon: SlidersHorizontal },
 ];
 
 export default function CreatorApp() {
   const [tab, setTab] = useState("home");
+  const [badges, setBadges] = useState({ messages: 0, requests: 0 });
+
+  useEffect(() => {
+    Promise.all([
+      api.get("/creator/conversations").catch(() => ({ data: { unread_total: 0 } })),
+      api.get("/creator/requests").catch(() => ({ data: { requests: [] } })),
+    ]).then(([c, r]) => setBadges({ messages: c.data.unread_total || 0, requests: (r.data.requests || []).length }));
+  }, [tab]);
 
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto min-h-screen w-full max-w-md bg-background px-5 pb-32 pt-6">
         {tab === "home" && <HomeTab go={setTab} />}
-        {tab === "tribute" && <TributeTab />}
         {tab === "subs" && <SubsTab />}
-        {tab === "remind" && <RemindTab />}
-        {tab === "inbox" && <InboxTab />}
+        {tab === "messages" && <MessagesTab />}
         {tab === "requests" && <RequestsTab go={setTab} />}
+        {tab === "remind" && <RemindTab />}
+        {tab === "plans" && <TributeTab />}
+        {tab === "inbox" && <InboxTab />}
       </div>
 
-      <nav className="fixed bottom-4 left-1/2 z-50 flex w-[min(28rem,calc(100%-2rem))] -translate-x-1/2 items-center justify-around rounded-full bg-white/90 p-2 shadow-jade-lg backdrop-blur-xl"
+      <nav className="fixed bottom-3 left-1/2 z-40 flex w-[min(28rem,calc(100%-1.5rem))] -translate-x-1/2 items-center justify-around rounded-full bg-white/90 p-1.5 shadow-jade-lg backdrop-blur-xl"
         data-testid="creator-nav">
         {TABS.map((t) => {
-          const activeTab = tab === t.key || ((tab === "inbox" || tab === "requests") && t.key === "home");
+          const activeTab = tab === t.key || (tab === "inbox" && t.key === "home");
+          const count = t.badge ? badges[t.badge] : 0;
           return (
             <button key={t.key} data-testid={`nav-${t.key}`} onClick={() => setTab(t.key)}
-              className={`flex flex-1 flex-col items-center gap-1 rounded-full py-2.5 transition-colors ${
+              className={`relative flex flex-1 flex-col items-center gap-0.5 rounded-full py-2 transition-colors ${
                 activeTab ? "bg-primary/10 text-primary" : "text-foreground"
               }`}>
-              <t.Icon className={`h-6 w-6 ${activeTab ? "" : ""}`} fill={activeTab && (t.key === "tribute" || t.key === "remind") ? "currentColor" : "none"} />
-              <span className="text-xs font-semibold">{t.label}</span>
+              <t.Icon className="h-5 w-5" fill={activeTab && t.key === "remind" ? "currentColor" : "none"} />
+              <span className="text-[10px] font-semibold">{t.label}</span>
+              {count > 0 && (
+                <span className="absolute top-1 right-[18%] grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[9px] font-bold text-white">{count}</span>
+              )}
             </button>
           );
         })}

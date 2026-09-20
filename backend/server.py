@@ -438,6 +438,104 @@ async def build_membership(user_id: str):
     }
 
 
+class MessageBody(BaseModel):
+    text: str
+
+
+class ReminderSettingsBody(BaseModel):
+    send_renewal: bool
+    quiet_hours: bool
+    lead_days: int
+
+
+def _initials(name: str) -> str:
+    parts = [p for p in name.split() if p]
+    return "".join(p[0].upper() for p in parts[:2]) or "?"
+
+
+# ---- Fan messaging (their single thread with the creator) ----
+@api_router.get("/messages")
+async def fan_messages(user: dict = Depends(get_current_user)):
+    tid = f"fan_{user['id']}"
+    count = await db.messages.count_documents({"thread_id": tid})
+    if count == 0:
+        await db.messages.insert_one({
+            "id": f"msg_{uuid.uuid4().hex[:10]}", "thread_id": tid, "sender": "creator",
+            "text": "Welcome to the Dynasty 🖤 Message me anytime.", "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    msgs = await db.messages.find({"thread_id": tid}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    return {"messages": msgs}
+
+
+@api_router.post("/messages")
+async def fan_send(body: MessageBody, user: dict = Depends(get_current_user)):
+    tid = f"fan_{user['id']}"
+    now = datetime.now(timezone.utc).isoformat()
+    msg = {"id": f"msg_{uuid.uuid4().hex[:10]}", "thread_id": tid, "sender": "fan", "text": body.text.strip(), "created_at": now}
+    await db.messages.insert_one(dict(msg))
+    m = await db.memberships.find_one({"user_id": user["id"]})
+    plan = compute_tier(m["amount"]) + " Tier" if m else "Member"
+    existing = await db.creator_conversations.find_one({"id": tid})
+    if existing:
+        await db.creator_conversations.update_one({"id": tid}, {"$set": {"last": body.text.strip(), "updated_at": now}, "$inc": {"unread": 1}})
+    else:
+        await db.creator_conversations.insert_one({
+            "id": tid, "name": user["name"], "initials": _initials(user["name"]), "plan": plan,
+            "last": body.text.strip(), "unread": 1, "sort": -1, "updated_at": now,
+        })
+    msg.pop("_id", None)
+    return {"message": msg}
+
+
+# ---- Creator inbox ----
+@api_router.get("/creator/conversations")
+async def creator_conversations(admin: dict = Depends(require_admin)):
+    convs = await db.creator_conversations.find({}, {"_id": 0}).sort([("sort", 1), ("updated_at", -1)]).to_list(500)
+    unread_total = sum(c.get("unread", 0) for c in convs)
+    return {"conversations": convs, "unread_total": unread_total}
+
+
+@api_router.get("/creator/conversations/{thread_id}/messages")
+async def creator_thread(thread_id: str, admin: dict = Depends(require_admin)):
+    conv = await db.creator_conversations.find_one({"id": thread_id}, {"_id": 0})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    await db.creator_conversations.update_one({"id": thread_id}, {"$set": {"unread": 0}})
+    msgs = await db.messages.find({"thread_id": thread_id}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    return {"conversation": conv, "messages": msgs}
+
+
+@api_router.post("/creator/conversations/{thread_id}/messages")
+async def creator_send(thread_id: str, body: MessageBody, admin: dict = Depends(require_admin)):
+    conv = await db.creator_conversations.find_one({"id": thread_id})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    now = datetime.now(timezone.utc).isoformat()
+    msg = {"id": f"msg_{uuid.uuid4().hex[:10]}", "thread_id": thread_id, "sender": "creator", "text": body.text.strip(), "created_at": now}
+    await db.messages.insert_one(dict(msg))
+    await db.creator_conversations.update_one({"id": thread_id}, {"$set": {"last": body.text.strip(), "updated_at": now}})
+    msg.pop("_id", None)
+    return {"message": msg}
+
+
+# ---- Reminders / renewals ----
+@api_router.get("/creator/renewals")
+async def creator_renewals(admin: dict = Depends(require_admin)):
+    items = await db.creator_renewals.find({}, {"_id": 0}).sort("sort", 1).to_list(100)
+    settings = await db.creator_settings.find_one({"key": "reminders"}, {"_id": 0})
+    return {"renewals": items, "settings": settings}
+
+
+@api_router.post("/creator/reminder-settings")
+async def creator_reminder_settings(body: ReminderSettingsBody, admin: dict = Depends(require_admin)):
+    await db.creator_settings.update_one(
+        {"key": "reminders"},
+        {"$set": {"send_renewal": body.send_renewal, "quiet_hours": body.quiet_hours, "lead_days": body.lead_days}},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
 @api_router.get("/plans")
 async def public_plans():
     plans = await db.membership_plans.find({}, {"_id": 0}).sort("sort", 1).to_list(50)
@@ -601,6 +699,38 @@ SEED_MEMBERSHIP_PLANS = [
      "features": ["Lifetime vault access", "Signed digital print", "No recurring charge"], "featured": True, "sort": 3},
 ]
 
+def _rel(minutes=0, hours=0, days=0):
+    return (datetime.now(timezone.utc) - timedelta(minutes=minutes, hours=hours, days=days)).isoformat()
+
+SEED_CONVERSATIONS = [
+    {"id": "conv_mv", "name": "Marcus Vale", "initials": "MV", "plan": "The Jade Plan", "last": "Counting the minutes 😌", "unread": 1, "sort": 0},
+    {"id": "conv_dr", "name": "Devon Reyes", "initials": "DR", "plan": "The Jade Cycle", "last": "Perfect. Can I add a second request?", "unread": 2, "sort": 1},
+    {"id": "conv_eb", "name": "Elias Brandt", "initials": "EB", "plan": "The Jade Cycle", "last": "Perfect 💗", "unread": 0, "sort": 2},
+    {"id": "conv_tl", "name": "Theo Lang", "initials": "TL", "plan": "The Jade Arrangement", "last": "Worth every dollar honestly.", "unread": 0, "sort": 3},
+    {"id": "conv_am", "name": "Ari Mensah", "initials": "AM", "plan": "Jade Edition", "last": "You were first in the vault, Ari. Enjoy it 😘", "unread": 0, "sort": 4},
+]
+
+SEED_MESSAGES = [
+    {"id": "m_dr1", "thread_id": "conv_dr", "sender": "fan", "text": "Just upgraded to the Cycle tier!", "created_at": _rel(hours=20)},
+    {"id": "m_dr2", "thread_id": "conv_dr", "sender": "creator", "text": "Welcome up, Devon. Your first custom drops Friday.", "created_at": _rel(hours=19, minutes=40)},
+    {"id": "m_dr3", "thread_id": "conv_dr", "sender": "fan", "text": "Perfect. Can I add a second request?", "created_at": _rel(hours=1)},
+    {"id": "m_mv1", "thread_id": "conv_mv", "sender": "fan", "text": "Counting the minutes 😌", "created_at": _rel(minutes=7)},
+    {"id": "m_eb1", "thread_id": "conv_eb", "sender": "fan", "text": "Perfect 💗", "created_at": _rel(hours=2)},
+    {"id": "m_tl1", "thread_id": "conv_tl", "sender": "fan", "text": "Worth every dollar honestly.", "created_at": _rel(hours=23)},
+    {"id": "m_am1", "thread_id": "conv_am", "sender": "creator", "text": "You were first in the vault, Ari. Enjoy it 😘", "created_at": _rel(days=1)},
+]
+
+CONV_UPDATED = {"conv_mv": _rel(minutes=7), "conv_dr": _rel(hours=1), "conv_eb": _rel(hours=2), "conv_tl": _rel(hours=23), "conv_am": _rel(days=1)}
+
+SEED_RENEWALS = [
+    {"id": "ren_am", "name": "Ari Mensah", "initials": "AM", "plan": "Jade Edition", "amount": 299, "in_days": 3, "sort": 0},
+    {"id": "ren_tl", "name": "Theo Lang", "initials": "TL", "plan": "The Jade Arrangement", "amount": 196, "in_days": 6, "sort": 1},
+    {"id": "ren_dr", "name": "Devon Reyes", "initials": "DR", "plan": "The Jade Cycle", "amount": 178, "in_days": 9, "sort": 2},
+    {"id": "ren_eb", "name": "Elias Brandt", "initials": "EB", "plan": "The Jade Cycle", "amount": 178, "in_days": 12, "sort": 3},
+    {"id": "ren_mv", "name": "Marcus Vale", "initials": "MV", "plan": "The Jade Plan", "amount": 149, "in_days": 15, "sort": 4},
+    {"id": "ren_np", "name": "Noah Park", "initials": "NP", "plan": "The Jade Plan", "amount": 149, "in_days": 18, "sort": 5},
+]
+
 
 async def seed_creator():
     if await db.creator_plans.count_documents({}) == 0:
@@ -615,6 +745,17 @@ async def seed_creator():
         await db.creator_requests.insert_many([dict(r) for r in SEED_REQUESTS])
     if await db.membership_plans.count_documents({}) == 0:
         await db.membership_plans.insert_many([dict(p) for p in SEED_MEMBERSHIP_PLANS])
+    if await db.creator_conversations.count_documents({}) == 0:
+        convs = [dict(c) for c in SEED_CONVERSATIONS]
+        for c in convs:
+            c["updated_at"] = CONV_UPDATED.get(c["id"], _rel())
+        await db.creator_conversations.insert_many(convs)
+    if await db.messages.count_documents({}) == 0:
+        await db.messages.insert_many([dict(m) for m in SEED_MESSAGES])
+    if await db.creator_renewals.count_documents({}) == 0:
+        await db.creator_renewals.insert_many([dict(r) for r in SEED_RENEWALS])
+    if await db.creator_settings.count_documents({"key": "reminders"}) == 0:
+        await db.creator_settings.insert_one({"key": "reminders", "send_renewal": True, "quiet_hours": True, "lead_days": 3})
     # backfill handles for existing subscriber docs
     for s in SEED_SUBSCRIBERS:
         await db.creator_subscribers.update_one(

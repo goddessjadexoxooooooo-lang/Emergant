@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ChevronLeft, Heart, Sparkles, Repeat, ArrowRight, Crown } from "lucide-react";
+import { ChevronLeft, Heart, Sparkles, Repeat, ArrowRight, Crown, MessageCircle } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { getMethodInfo } from "@/lib/paymentMethods";
@@ -34,9 +34,14 @@ export default function MemberDashboard() {
             <ChevronLeft className="h-5 w-5" />
           </button>
           <h1 className="font-display text-xl font-bold">My Membership</h1>
-          <button data-testid="member-profile-link" onClick={() => navigate("/profile")} className="grid h-9 w-9 place-items-center rounded-full text-primary hover:bg-muted">
-            <Heart className="h-5 w-5 fill-current" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button data-testid="member-messages-link" onClick={() => navigate("/messages")} className="grid h-9 w-9 place-items-center rounded-full text-primary hover:bg-muted">
+              <MessageCircle className="h-5 w-5" />
+            </button>
+            <button data-testid="member-profile-link" onClick={() => navigate("/profile")} className="grid h-9 w-9 place-items-center rounded-full text-primary hover:bg-muted">
+              <Heart className="h-5 w-5 fill-current" />
+            </button>
+          </div>
         </div>
 
         <div className="px-5">

@@ -10,6 +10,7 @@ import AuthCallback from "@/pages/AuthCallback";
 import CreatorApp from "@/pages/CreatorApp";
 import CreatorProfile from "@/pages/CreatorProfile";
 import Plans from "@/pages/Plans";
+import Messages from "@/pages/Messages";
 
 function FullScreenLoader() {
   return (
@@ -40,6 +41,7 @@ function AppRoutes() {
       <Route path="/one-time" element={<TributeFlow oneTime />} />
       <Route path="/profile" element={<CreatorProfile />} />
       <Route path="/plans" element={<Plans />} />
+      <Route path="/messages" element={<Protected><Messages /></Protected>} />
       <Route path="/dashboard" element={<Protected><MemberDashboard /></Protected>} />
       <Route path="/admin" element={<Protected admin><CreatorApp /></Protected>} />
       <Route path="*" element={<Navigate to="/" replace />} />

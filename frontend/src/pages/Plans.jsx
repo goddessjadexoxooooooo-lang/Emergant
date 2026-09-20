@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 
 function PlanCard({ plan, index, onSubscribe }) {
   const featured = plan.featured;
-  const cadenceLabel = plan.cadence === "one-time" ? "once" : plan.cadence;
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -25,25 +24,7 @@ function PlanCard({ plan, index, onSubscribe }) {
         </span>
       </div>
 
-      <p className={`mt-3 font-display text-4xl font-bold ${featured ? "text-white" : "text-primary"}`}>
-        ${plan.price}
-        <span className={`ml-1 align-baseline text-base font-medium ${featured ? "text-white/80" : "text-primary/80"}`}>
-          {plan.cadence === "one-time" ? "once" : `/ ${cadenceLabel}`}
-        </span>
-      </p>
-
       <p className={`mt-3 ${featured ? "text-white/85" : "text-muted-foreground"}`}>{plan.desc}</p>
-
-      <ul className="mt-4 space-y-2.5">
-        {plan.features.map((f) => (
-          <li key={f} className="flex items-center gap-3">
-            <span className={`grid h-6 w-6 place-items-center rounded-full ${featured ? "bg-white/25 text-white" : "bg-foreground text-background"}`}>
-              <Check className="h-3.5 w-3.5" />
-            </span>
-            <span className={featured ? "text-white" : "text-foreground"}>{f}</span>
-          </li>
-        ))}
-      </ul>
 
       <Button
         data-testid={`subscribe-${plan.id}`}

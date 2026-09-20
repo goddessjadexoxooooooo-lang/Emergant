@@ -374,9 +374,122 @@ async def record_subscription(body: RecordSubBody, user: dict = Depends(get_curr
 @api_router.get("/tributes/me")
 async def my_tributes(user: dict = Depends(get_current_user)):
     items = await db.tributes.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
-    total = sum(t["amount"] for t in items if t.get("status") in ("completed", "active"))
+    total = sum(t["amount"] for t in items if t.get("status") in ("completed", "active", "confirmed"))
     active = next((t for t in items if t["type"] == "recurring" and t["status"] == "active"), None)
     return {"tributes": items, "total_contributed": round(total, 2), "active_membership": active}
+
+
+# ---------------------------------------------------------------------------
+# Membership (self-reported tribute model)
+# ---------------------------------------------------------------------------
+FREQ_DAYS = {"weekly": 7, "monthly": 30, "yearly": 365}
+
+
+def compute_tier(amount: float) -> str:
+    if amount >= 250:
+        return "Diamond"
+    if amount >= 100:
+        return "Gold"
+    if amount >= 50:
+        return "Silver"
+    if amount >= 25:
+        return "Bronze"
+    return "Initiate"
+
+
+def next_date_from(start: datetime, frequency: str) -> str:
+    return (start + timedelta(days=FREQ_DAYS.get(frequency, 30))).isoformat()
+
+
+class MembershipSetupBody(BaseModel):
+    amount: float
+    frequency: str
+    method: str
+
+
+class SelfReportBody(BaseModel):
+    amount: float
+    method: str
+
+
+async def build_membership(user_id: str):
+    m = await db.memberships.find_one({"user_id": user_id}, {"_id": 0})
+    if not m or not m.get("active"):
+        return None
+    now = datetime.now(timezone.utc)
+    nxt = m.get("next_tribute_date")
+    try:
+        nxt_dt = datetime.fromisoformat(nxt) if nxt else now
+        if nxt_dt.tzinfo is None:
+            nxt_dt = nxt_dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        nxt_dt = now
+    days_until = (nxt_dt - now).days
+    return {
+        "amount": m["amount"],
+        "frequency": m["frequency"],
+        "method": m["method"],
+        "tier": compute_tier(m["amount"]),
+        "active": True,
+        "next_tribute_date": m.get("next_tribute_date"),
+        "days_until": days_until,
+        "is_due": days_until <= 0,
+        "created_at": m.get("created_at"),
+    }
+
+
+@api_router.get("/membership/me")
+async def membership_me(user: dict = Depends(get_current_user)):
+    membership = await build_membership(user["id"])
+    items = await db.tributes.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    total = sum(t["amount"] for t in items if t.get("status") in ("completed", "active", "confirmed"))
+    return {"membership": membership, "history": items, "total_contributed": round(total, 2)}
+
+
+@api_router.post("/membership/setup")
+async def membership_setup(body: MembershipSetupBody, user: dict = Depends(get_current_user)):
+    now = datetime.now(timezone.utc)
+    doc = {
+        "user_id": user["id"],
+        "amount": round(body.amount, 2),
+        "frequency": body.frequency,
+        "method": body.method,
+        "active": True,
+        "created_at": now.isoformat(),
+        "next_tribute_date": next_date_from(now, body.frequency),
+    }
+    await db.memberships.update_one({"user_id": user["id"]}, {"$set": doc}, upsert=True)
+    return {"membership": await build_membership(user["id"])}
+
+
+@api_router.post("/membership/cancel")
+async def membership_cancel(user: dict = Depends(get_current_user)):
+    await db.memberships.update_one({"user_id": user["id"]}, {"$set": {"active": False}})
+    return {"ok": True}
+
+
+@api_router.post("/tributes/self-report")
+async def self_report(body: SelfReportBody, user: dict = Depends(get_current_user)):
+    tribute = await record_tribute({
+        "type": "self-report",
+        "amount": round(body.amount, 2),
+        "currency": "USD",
+        "frequency": None,
+        "method": body.method,
+        "status": "confirmed",
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "user_name": user["name"],
+    })
+    # advance next tribute date on the membership
+    m = await db.memberships.find_one({"user_id": user["id"]})
+    if m and m.get("active"):
+        now = datetime.now(timezone.utc)
+        await db.memberships.update_one(
+            {"user_id": user["id"]},
+            {"$set": {"next_tribute_date": next_date_from(now, m.get("frequency", "monthly"))}},
+        )
+    return {"tribute": tribute, "membership": await build_membership(user["id"])}
 
 
 # ---------------------------------------------------------------------------
@@ -393,15 +506,16 @@ async def admin_members(admin: dict = Depends(require_admin)):
             continue
         agg = by_user.setdefault(uid, {"total": 0.0, "count": 0, "active": False})
         agg["count"] += 1
-        if t.get("status") in ("completed", "active"):
+        if t.get("status") in ("completed", "active", "confirmed"):
             agg["total"] += t["amount"]
         if t["type"] == "recurring" and t["status"] == "active":
             agg["active"] = True
+    active_ids = {m["user_id"] async for m in db.memberships.find({"active": True}, {"user_id": 1})}
     for u in users:
         agg = by_user.get(u["id"], {"total": 0.0, "count": 0, "active": False})
         u["total_contributed"] = round(agg["total"], 2)
         u["tribute_count"] = agg["count"]
-        u["is_active_member"] = agg["active"]
+        u["is_active_member"] = agg["active"] or (u["id"] in active_ids)
     return {"members": users}
 
 
@@ -415,9 +529,9 @@ async def admin_tributes(admin: dict = Depends(require_admin)):
 async def admin_stats(admin: dict = Depends(require_admin)):
     tributes = await db.tributes.find({}, {"_id": 0}).to_list(5000)
     total_members = await db.users.count_documents({"role": "member"})
-    total_revenue = sum(t["amount"] for t in tributes if t.get("status") in ("completed", "active"))
-    active_subs = sum(1 for t in tributes if t["type"] == "recurring" and t["status"] == "active")
-    one_time = sum(1 for t in tributes if t["type"] == "one-time")
+    total_revenue = sum(t["amount"] for t in tributes if t.get("status") in ("completed", "active", "confirmed"))
+    active_subs = await db.memberships.count_documents({"active": True})
+    one_time = sum(1 for t in tributes if t["type"] in ("one-time", "self-report"))
     return {
         "total_members": total_members,
         "total_revenue": round(total_revenue, 2),

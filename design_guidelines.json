@@ -1,0 +1,121 @@
+{
+  "theme": "light",
+  "typography": {
+    "fonts": {
+      "headings": "'Playfair Display', serif",
+      "body": "'Outfit', sans-serif"
+    },
+    "hierarchy": {
+      "h1": "text-5xl sm:text-6xl tracking-tight font-bold",
+      "h2": "text-3xl sm:text-4xl tracking-tight font-semibold text-[hsl(var(--foreground))]",
+      "h3": "text-xl sm:text-2xl font-medium",
+      "body": "text-base leading-relaxed text-[hsl(var(--foreground))]",
+      "label": "text-xs uppercase tracking-[0.2em] font-semibold text-muted-foreground"
+    },
+    "instructions": "Use 'Playfair Display' exclusively for H1, H2, and H3 to maintain the regal/ceremonial feel. Use 'Outfit' for body, inputs, and UI elements. Never default to generic Sans fonts like Inter."
+  },
+  "colors": {
+    "brand": {
+      "primary": "hsl(340, 100%, 65%)",
+      "primary_hex": "#FF4E88",
+      "secondary_blush": "hsl(344, 50%, 96%)",
+      "secondary_hex": "#FDF0F4",
+      "deep_plum": "hsl(347, 69%, 17%)",
+      "plum_hex": "#4A0E1B"
+    },
+    "tailwind_vars": {
+      "--background": "344 50% 96%",
+      "--foreground": "347 69% 17%",
+      "--card": "0 0% 100%",
+      "--card-foreground": "347 69% 17%",
+      "--popover": "0 0% 100%",
+      "--popover-foreground": "347 69% 17%",
+      "--primary": "340 100% 65%",
+      "--primary-foreground": "0 0% 100%",
+      "--secondary": "340 20% 90%",
+      "--secondary-foreground": "347 69% 17%",
+      "--muted": "344 30% 90%",
+      "--muted-foreground": "347 40% 40%",
+      "--border": "344 30% 85%",
+      "--input": "344 30% 85%",
+      "--ring": "340 100% 65%",
+      "--radius": "1.5rem"
+    },
+    "instructions": "Update src/index.css with these exact HSL values. The app is strictly Light Theme (blush background, white surfaces, deep plum text) to maintain the delicate brand identity. Use vivid hot pink/plum gradients only for hero sections and primary buttons."
+  },
+  "visual_enhancers": {
+    "buttons": "Pill-shaped (rounded-full) for primary actions. Must use the hot pink primary color. Include a subtle drop-shadow and hover translation (-translate-y-0.5).",
+    "inputs": "Rounded fields (rounded-2xl) with pure white background (bg-white) resting on the blush app background. No heavy borders; use subtle border (border-border).",
+    "chips": "For the 'JADE DYNASTY' branding, use small pill-shaped badges (rounded-full) featuring a Lucide 'Heart' icon, white text, and a semi-transparent white/pink background.",
+    "gradients": "Hero background must use a soft-to-vivid pink/plum gradient. Use CSS gradients like `bg-gradient-to-br from-[#4A0E1B] via-[#FF4E88] to-[#FDF0F4]` or overlapping blurred background blobs.",
+    "glassmorphism": "Use for the sticky top navigation bar: `backdrop-blur-xl bg-white/70` with a delicate `border-b border-white/40`. NEVER use full transparent backgrounds over scrolling content."
+  },
+  "components": {
+    "strategy": "Use pure HTML/Tailwind for the Marketing Landing Page to allow for organic, overlapping layouts and gradients. Use customized Shadcn UI components for the Authenticated Dashboards and Tribute Flow.",
+    "shadcn_customizations": {
+      "button": "Override default rounded-md to rounded-full. Add rich hover states.",
+      "input": "Override default h-9 to h-12, and rounded-md to rounded-2xl. Use bg-white explicitly since the page background is blush.",
+      "card": "Use shadow-[0_8px_30px_rgba(74,14,27,0.06)] for a soft, premium lift. Set border-radius to rounded-3xl. Remove harsh default borders.",
+      "tabs": "For tribute selection (frequency/rhythm), use a custom pill-based tab list rather than standard rigid Shadcn tabs."
+    }
+  },
+  "grids_layouts": {
+    "marketing_hero": "Full viewport height (min-h-[90vh]), heavily reliant on gradient background, large centralized serif typography, and a clear pill-shaped primary CTA.",
+    "tribute_flow": "Centered, narrow max-width container (max-w-2xl). Multi-step interface (Amount -> Rhythm -> Payment). Generous padding (p-8 or p-12) inside the main white card to feel premium and unhurried.",
+    "member_dashboard": "Bento Grid strategy. Main layout: Side navigation (w-64) + Main content area. Grid: grid-cols-1 md:grid-cols-3 gap-6. Dashboard cards should feel like floating white islands on the blush background.",
+    "admin_dashboard": "High-density but elegant. grid-cols-1 md:grid-cols-4. Use Shadcn tables with ample row padding. Keep the aesthetic light, clear, and functional."
+  },
+  "motion": {
+    "page_transitions": "Use framer-motion for smooth fade and slight slide-up (y: 20 -> y: 0) when entering the tribute flow or transitioning between dashboard views.",
+    "micro_interactions": "Buttons and selectable tribute cards should scale up slightly (scale: 1.02) and lift (-translate-y-1) on hover with a spring transition."
+  },
+  "accessibility": {
+    "contrast": "Ensure white text on hot pink buttons meets APCA standards. Deep plum text on blush background provides excellent contrast natively.",
+    "testing": "All interactive elements MUST have `data-testid` attributes (e.g., `data-testid=\"tribute-amount-select\"`). Use role-based, kebab-case naming."
+  },
+  "media": {
+    "image_urls": [
+      {
+        "url": "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MDV8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMHBpbmslMjBncmFkaWVudHxlbnwwfHx8fDE3ODk4ODg0NjR8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract purple and pink gradient waves",
+        "category": "hero_background"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1605184861755-8f190fea96a5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MDV8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMHBpbmslMjBncmFkaWVudHxlbnwwfHx8fDE3ODk4ODg0NjR8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Pink light illustration",
+        "category": "accent_background"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1670899460364-ebc917bac09a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2OTV8MHwxfHNlYXJjaHwxfHxlbGVnYW50JTIwZ2F0aGVyaW5nfGVufDB8fHx8MTc4OTg4ODQ2NHww&ixlib=rb-4.1.0&q=85",
+        "description": "A group of people sitting at a long table (elegant gathering)",
+        "category": "community_section"
+      }
+    ],
+    "icons": "Use `lucide-react`. Required icons include 'Heart' (for the Jade Dynasty chip), 'Crown' (for admin privileges), and 'CreditCard' (for payment methods)."
+  },
+  "instructions_to_main_agent": [
+    "1. Install 'Playfair Display' and 'Outfit' fonts via Google Fonts in public/index.html.",
+    "2. Update tailwind.config.js and src/index.css strictly with the provided HSL variables.",
+    "3. Do NOT implement a dark mode toggle. The application relies entirely on the Light/Blush theme to accurately represent the 'Jade & Co.' branding.",
+    "4. Build a custom 'Tribute Flow' using Framer Motion for smooth transitions between steps (Amount -> Rhythm -> Payment).",
+    "5. Use standard semantic HTML sections for the marketing landing page, but highly customized Shadcn components for the dashboard areas.",
+    "6. Ensure all primary buttons are rounded-full to match the mobile app's pill-shaped button aesthetic.",
+    "7. Add `data-testid` to all interactive components."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur).",
+    "You MUST NOT apply universal transition. Eg: `transition: all`. Always add transitions for specific interactive elements.",
+    "You MUST NOT center align the app container, ie do not add `.App { text-align: center; }` in the css file.",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style.",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "Prioritize using pre-existing components from src/components/ui when applicable. Create new components matching existing style.",
+    "Use `sonner` for toasts. Located in `/app/frontend/src/components/ui/sonner.js` or `.jsx`."
+  ]
+}

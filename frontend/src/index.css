@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    margin: 0;
+    font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+@layer base {
+    :root {
+        --background: 344 50% 96%;
+        --foreground: 347 69% 17%;
+        --card: 0 0% 100%;
+        --card-foreground: 347 69% 17%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 347 69% 17%;
+        --primary: 340 100% 65%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 340 20% 90%;
+        --secondary-foreground: 347 69% 17%;
+        --muted: 344 30% 90%;
+        --muted-foreground: 347 40% 40%;
+        --accent: 344 50% 94%;
+        --accent-foreground: 347 69% 17%;
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 344 30% 85%;
+        --input: 344 30% 85%;
+        --ring: 340 100% 65%;
+        --radius: 1.5rem;
+        --chart-1: 340 100% 65%;
+        --chart-2: 347 69% 40%;
+        --chart-3: 320 70% 55%;
+        --chart-4: 300 60% 60%;
+        --chart-5: 30 90% 65%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+    h1, h2, h3 {
+        font-family: 'Playfair Display', serif;
+    }
+}
+
+::selection {
+    background: hsl(340 100% 65% / 0.25);
+    color: hsl(347 69% 17%);
+}
+
+.font-serif-display {
+    font-family: 'Playfair Display', serif;
+}
+
+.jade-grain {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
+}
+
+@keyframes float-slow {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(20px, -30px) scale(1.08); }
+}
+.animate-float-slow { animation: float-slow 14s ease-in-out infinite; }
+
+[data-debug-wrapper="true"] { display: contents !important; }

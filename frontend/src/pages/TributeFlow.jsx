@@ -1,13 +1,21 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Check, Heart, Repeat, CalendarDays, CalendarClock, CalendarRange } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Heart, Repeat, CalendarDays, CalendarClock, CalendarRange, ExternalLink, DollarSign, Gift, Wallet, Banknote } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Navbar } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import PayPalCheckout from "@/components/PayPalCheckout";
+
+const EXTERNAL_METHODS = [
+  { key: "paypalme", label: "PayPal.Me", handle: "drippinmami", url: "https://www.paypal.me/drippinmami", icon: DollarSign, color: "#003087" },
+  { key: "cashapp", label: "CashApp", handle: "$drippinmami18", url: "https://cash.app/$drippinmami18", icon: Banknote, color: "#00D632" },
+  { key: "venmo", label: "Venmo", handle: "@princessJade_", url: "https://venmo.com/u/princessJade_", icon: Wallet, color: "#008CFF" },
+  { key: "throne", label: "Throne Wishlist", handle: "princessjade24", url: "https://throne.com/princessjade24", icon: Gift, color: "#7C3AED" },
+  { key: "youpay", label: "YouPay", handle: "GoodessJade462", url: "https://youpay.me/GoodessJade462", icon: Heart, color: "#FF4E88" },
+];
 
 const AMOUNTS = [5, 10, 25, 50, 100];
 const RHYTHMS = [
@@ -233,6 +241,38 @@ export default function TributeFlow({ oneTime = false }) {
                 </div>
                 <p className="mt-4 text-center text-xs text-muted-foreground">
                   Secure checkout via PayPal · Sandbox test mode
+                </p>
+
+                <div className="my-7 flex items-center gap-3 text-xs uppercase tracking-widest text-muted-foreground">
+                  <span className="h-px flex-1 bg-border" /> or pay another way <span className="h-px flex-1 bg-border" />
+                </div>
+
+                <div className="grid gap-3" data-testid="external-methods">
+                  {EXTERNAL_METHODS.map((m) => (
+                    <a
+                      key={m.key}
+                      href={m.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid={`pay-${m.key}`}
+                      className="group flex items-center gap-4 rounded-2xl border-2 border-border bg-white p-4 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-jade"
+                    >
+                      <span
+                        className="grid h-11 w-11 place-items-center rounded-xl text-white"
+                        style={{ backgroundColor: m.color }}
+                      >
+                        <m.icon className="h-5 w-5" />
+                      </span>
+                      <span className="flex-1">
+                        <span className="block font-semibold">{m.label}</span>
+                        <span className="block text-sm text-muted-foreground">{m.handle}</span>
+                      </span>
+                      <ExternalLink className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
+                    </a>
+                  ))}
+                </div>
+                <p className="mt-4 text-center text-xs text-muted-foreground">
+                  These open the creator's external payment page in a new tab.
                 </p>
               </motion.div>
             )}

@@ -28,10 +28,6 @@ JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGORITHM = "HS256"
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 
-PAYPAL_BASE_URL = os.environ['PAYPAL_BASE_URL']
-PAYPAL_CLIENT_ID = os.environ['PAYPAL_CLIENT_ID']
-PAYPAL_SECRET = os.environ['PAYPAL_SECRET']
-
 EMERGENT_AUTH_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -104,87 +100,6 @@ async def require_admin(user: dict = Depends(get_current_user)) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# PayPal helpers
-# ---------------------------------------------------------------------------
-FREQUENCY_MAP = {
-    "weekly": ("WEEK", 1),
-    "monthly": ("MONTH", 1),
-    "yearly": ("YEAR", 1),
-}
-
-
-async def paypal_token() -> str:
-    async with httpx.AsyncClient(timeout=30) as c:
-        r = await c.post(
-            f"{PAYPAL_BASE_URL}/v1/oauth2/token",
-            auth=(PAYPAL_CLIENT_ID, PAYPAL_SECRET),
-            data={"grant_type": "client_credentials"},
-            headers={"Accept": "application/json"},
-        )
-    if r.status_code != 200:
-        logger.error("PayPal token error: %s", r.text)
-        raise HTTPException(status_code=502, detail="PayPal auth failed")
-    return r.json()["access_token"]
-
-
-async def paypal_request(method: str, path: str, token: str, json_body=None):
-    async with httpx.AsyncClient(timeout=30) as c:
-        r = await c.request(
-            method, f"{PAYPAL_BASE_URL}{path}", json=json_body,
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        )
-    if r.status_code >= 400:
-        logger.error("PayPal %s %s -> %s %s", method, path, r.status_code, r.text)
-        raise HTTPException(status_code=502, detail="PayPal request failed")
-    return r.json() if r.text else {}
-
-
-async def get_or_create_product(token: str) -> str:
-    existing = await db.paypal_config.find_one({"key": "product_id"})
-    if existing:
-        return existing["value"]
-    data = await paypal_request("POST", "/v1/catalogs/products", token, {
-        "name": "Jade Dynasty Tribute",
-        "description": "Recurring tribute to the Jade Dynasty",
-        "type": "SERVICE",
-        "category": "MEMBERSHIP_CLUBS_AND_ORGANIZATIONS",
-    })
-    pid = data["id"]
-    await db.paypal_config.insert_one({"key": "product_id", "value": pid})
-    return pid
-
-
-async def get_or_create_plan(amount: float, frequency: str) -> str:
-    if frequency not in FREQUENCY_MAP:
-        raise HTTPException(status_code=400, detail="Invalid frequency")
-    amount_str = f"{amount:.2f}"
-    cache = await db.paypal_plans.find_one({"amount": amount_str, "frequency": frequency})
-    if cache:
-        return cache["plan_id"]
-    token = await paypal_token()
-    product_id = await get_or_create_product(token)
-    unit, count = FREQUENCY_MAP[frequency]
-    data = await paypal_request("POST", "/v1/billing/plans", token, {
-        "product_id": product_id,
-        "name": f"Jade Tribute {amount_str} {frequency}",
-        "billing_cycles": [{
-            "frequency": {"interval_unit": unit, "interval_count": count},
-            "tenure_type": "REGULAR", "sequence": 1, "total_cycles": 0,
-            "pricing_scheme": {"fixed_price": {"value": amount_str, "currency_code": "USD"}},
-        }],
-        "payment_preferences": {
-            "auto_bill_outstanding": True,
-            "setup_fee": {"value": "0", "currency_code": "USD"},
-            "setup_fee_failure_action": "CONTINUE",
-            "payment_failure_threshold": 3,
-        },
-    })
-    plan_id = data["id"]
-    await db.paypal_plans.insert_one({"amount": amount_str, "frequency": frequency, "plan_id": plan_id})
-    return plan_id
-
-
-# ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
 class RegisterBody(BaseModel):
@@ -200,28 +115,6 @@ class LoginBody(BaseModel):
 
 class SessionBody(BaseModel):
     session_id: str
-
-
-class CreateOrderBody(BaseModel):
-    amount: float
-
-
-class CaptureOrderBody(BaseModel):
-    order_id: str
-    amount: float
-    guest_name: str | None = None
-    guest_email: str | None = None
-
-
-class CreatePlanBody(BaseModel):
-    amount: float
-    frequency: str
-
-
-class RecordSubBody(BaseModel):
-    subscription_id: str
-    amount: float
-    frequency: str
 
 
 # ---------------------------------------------------------------------------
@@ -309,66 +202,6 @@ async def record_tribute(doc: dict):
     await db.tributes.insert_one(doc)
     doc.pop("_id", None)
     return doc
-
-
-@api_router.post("/paypal/create-order")
-async def create_order(body: CreateOrderBody):
-    token = await paypal_token()
-    data = await paypal_request("POST", "/v2/checkout/orders", token, {
-        "intent": "CAPTURE",
-        "purchase_units": [{
-            "amount": {"currency_code": "USD", "value": f"{body.amount:.2f}"},
-            "description": "One-time tribute to Jade & Co.",
-        }],
-    })
-    return {"id": data["id"]}
-
-
-@api_router.post("/paypal/capture-order")
-async def capture_order(body: CaptureOrderBody, request: Request):
-    token = await paypal_token()
-    data = await paypal_request("POST", f"/v2/checkout/orders/{body.order_id}/capture", token)
-    status = data.get("status", "UNKNOWN")
-    user = await optional_user(request)
-    tribute = await record_tribute({
-        "type": "one-time",
-        "amount": round(body.amount, 2),
-        "currency": "USD",
-        "frequency": None,
-        "status": "completed" if status == "COMPLETED" else status.lower(),
-        "paypal_order_id": body.order_id,
-        "user_id": user["id"] if user else None,
-        "user_email": user["email"] if user else (body.guest_email or "guest"),
-        "user_name": user["name"] if user else (body.guest_name or "Guest Tribute"),
-    })
-    return {"status": status, "tribute": tribute}
-
-
-@api_router.post("/paypal/create-plan")
-async def create_plan(body: CreatePlanBody, user: dict = Depends(get_current_user)):
-    plan_id = await get_or_create_plan(body.amount, body.frequency)
-    return {"plan_id": plan_id}
-
-
-@api_router.post("/paypal/record-subscription")
-async def record_subscription(body: RecordSubBody, user: dict = Depends(get_current_user)):
-    # deactivate previous active subscriptions for this user
-    await db.tributes.update_many(
-        {"user_id": user["id"], "type": "recurring", "status": "active"},
-        {"$set": {"status": "replaced"}},
-    )
-    tribute = await record_tribute({
-        "type": "recurring",
-        "amount": round(body.amount, 2),
-        "currency": "USD",
-        "frequency": body.frequency,
-        "status": "active",
-        "paypal_subscription_id": body.subscription_id,
-        "user_id": user["id"],
-        "user_email": user["email"],
-        "user_name": user["name"],
-    })
-    return {"tribute": tribute}
 
 
 @api_router.get("/tributes/me")

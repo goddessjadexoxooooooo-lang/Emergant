@@ -598,34 +598,38 @@ SEED_RENEWALS = [
 
 
 async def seed_creator():
+    # Ticket #259065 / job 732d2ad7: fake demo subscribers/payments/inbox/requests/
+    # conversations/messages/renewals were being (re-)inserted here on every cold
+    # start whenever their collection was empty -- which is exactly what happened
+    # after every prior cleanup attempt, since deleting the rows always emptied the
+    # collection and the next restart re-triggered the count==0 guard below. These
+    # blocks are intentionally removed, not just guarded, so this can never recur.
+    # Real plan-catalog/config seeding (not fake customer activity) is kept.
     if await db.creator_plans.count_documents({}) == 0:
         await db.creator_plans.insert_many([dict(p) for p in SEED_PLANS])
-    if await db.creator_subscribers.count_documents({}) == 0:
-        await db.creator_subscribers.insert_many([dict(s) for s in SEED_SUBSCRIBERS])
-    if await db.creator_payments.count_documents({}) == 0:
-        await db.creator_payments.insert_many([dict(p) for p in SEED_PAYMENTS])
-    if await db.creator_inbox.count_documents({}) == 0:
-        await db.creator_inbox.insert_many([dict(m) for m in SEED_INBOX])
-    if await db.creator_requests.count_documents({}) == 0:
-        await db.creator_requests.insert_many([dict(r) for r in SEED_REQUESTS])
     if await db.membership_plans.count_documents({}) == 0:
         await db.membership_plans.insert_many([dict(p) for p in SEED_MEMBERSHIP_PLANS])
-    if await db.creator_conversations.count_documents({}) == 0:
-        convs = [dict(c) for c in SEED_CONVERSATIONS]
-        for c in convs:
-            c["updated_at"] = CONV_UPDATED.get(c["id"], _rel())
-        await db.creator_conversations.insert_many(convs)
-    if await db.messages.count_documents({}) == 0:
-        await db.messages.insert_many([dict(m) for m in SEED_MESSAGES])
-    if await db.creator_renewals.count_documents({}) == 0:
-        await db.creator_renewals.insert_many([dict(r) for r in SEED_RENEWALS])
     if await db.creator_settings.count_documents({"key": "reminders"}) == 0:
         await db.creator_settings.insert_one({"key": "reminders", "send_renewal": True, "quiet_hours": True, "lead_days": 3})
-    # backfill handles for existing subscriber docs
-    for s in SEED_SUBSCRIBERS:
-        await db.creator_subscribers.update_one(
-            {"id": s["id"], "handle": {"$exists": False}}, {"$set": {"handle": s["handle"]}}
-        )
+
+    # One-time cleanup of the demo/sample rows previously seeded above, targeted
+    # strictly by their deterministic seed IDs so no genuinely real subscriber,
+    # payment, request, conversation, message, renewal or inbox entry is ever
+    # touched. Safe to run on every boot: deleting IDs that no longer exist is a
+    # no-op, so this naturally becomes inert after the first successful cleanup.
+    _seed_id_purge = {
+        "creator_subscribers": [s["id"] for s in SEED_SUBSCRIBERS],
+        "creator_payments": [p["id"] for p in SEED_PAYMENTS],
+        "creator_inbox": [m["id"] for m in SEED_INBOX],
+        "creator_requests": [r["id"] for r in SEED_REQUESTS],
+        "creator_conversations": [c["id"] for c in SEED_CONVERSATIONS],
+        "messages": [m["id"] for m in SEED_MESSAGES],
+        "creator_renewals": [r["id"] for r in SEED_RENEWALS],
+    }
+    for _coll, _ids in _seed_id_purge.items():
+        _res = await db[_coll].delete_many({"id": {"$in": _ids}})
+        if _res.deleted_count:
+            logger.info("Purged %d seeded demo doc(s) from %s (ticket #259065)", _res.deleted_count, _coll)
 
 
 class StatusBody(BaseModel):

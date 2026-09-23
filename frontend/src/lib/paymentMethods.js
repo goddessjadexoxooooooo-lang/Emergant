@@ -2,8 +2,6 @@
 export const MASTER = {
   stripe: { label: "Stripe", symbol: "S", color: "#635BFF" },
   paypal: { label: "PayPal", symbol: "P", color: "#003087", handle: "@drippinmami", link: (a) => `https://www.paypal.me/drippinmami${a ? "/" + a : ""}` },
-  paypal_general: { label: "PayPal", symbol: "P", color: "#003087", handle: "@drippinmami", link: (a) => `https://www.paypal.me/drippinmami${a ? "/" + a : ""}` },
-  paypal_recurring: { label: "PayPal", symbol: "P", color: "#003087", handle: "@drippinmami", link: (a) => `https://www.paypal.me/drippinmami${a ? "/" + a : ""}` },
   venmo: { label: "Venmo", symbol: "V", color: "#3D95CE", handle: "@princessJade_", link: (a) => `https://venmo.com/princessJade_?txn=pay&amount=${a}&note=${encodeURIComponent("Tribute for Goddess Jade")}` },
   cashapp: { label: "Cash App", symbol: "$", color: "#00D632", handle: "$drippinmami18", link: (a) => `https://cash.app/$drippinmami18${a ? "/" + a : ""}` },
   throne: { label: "Throne", symbol: "♦", color: "#7C3AED", handle: "throne.com/princessjade24", link: () => "https://throne.com/princessjade24" },
@@ -15,9 +13,7 @@ export const getMethodInfo = (key) => MASTER[key] || MASTER.venmo;
 
 // Checkout screen payment options (exact order + sublabels from design)
 export const CHECKOUT_METHODS = [
-  { key: "stripe", sub: "Recurring" },
-  { key: "paypal_general", sub: "General" },
-  { key: "paypal_recurring", sub: "Recurring" },
+  { key: "paypal", sub: "Pay with card or PayPal" },
   { key: "venmo", sub: "External" },
   { key: "cashapp", sub: "Also accepts Stripe" },
   { key: "throne", sub: "Wishlist" },

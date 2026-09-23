@@ -245,6 +245,41 @@ class SelfReportBody(BaseModel):
     method: str
 
 
+def _initials(name: str) -> str:
+    parts = [p for p in (name or "").split() if p]
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
+
+
+async def _open_payment_request(user: dict, amount: float, frequency, method: str, kind: str, tribute_id=None):
+    """Create a pending payment-confirmation card on the creator Requests screen."""
+    await db.creator_requests.update_many(
+        {"user_id": user["id"], "kind": kind, "status": "pending"},
+        {"$set": {"status": "superseded"}},
+    )
+    label = frequency or "one-time"
+    who = user.get("name") or user.get("email") or "Member"
+    await db.creator_requests.insert_one({
+        "id": f"req_pay_{uuid.uuid4().hex[:10]}",
+        "name": who,
+        "initials": _initials(who),
+        "plan_name": f"${amount:.2f} {label} via {method} - confirm payment received",
+        "status": "pending",
+        "sort": 100,
+        "kind": kind,
+        "user_id": user["id"],
+        "user_email": user.get("email"),
+        "amount": amount,
+        "frequency": frequency,
+        "method": method,
+        "tribute_id": tribute_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+
 async def build_membership(user_id: str):
     m = await db.memberships.find_one({"user_id": user_id}, {"_id": 0})
     if not m or not m.get("active"):
@@ -386,17 +421,20 @@ async def membership_me(user: dict = Depends(get_current_user)):
 @api_router.post("/membership/setup")
 async def membership_setup(body: MembershipSetupBody, user: dict = Depends(get_current_user)):
     now = datetime.now(timezone.utc)
+    amount = round(body.amount, 2)
     doc = {
         "user_id": user["id"],
-        "amount": round(body.amount, 2),
+        "amount": amount,
         "frequency": body.frequency,
         "method": body.method,
-        "active": True,
+        "active": False,
+        "awaiting_confirmation": True,
         "created_at": now.isoformat(),
         "next_tribute_date": next_date_from(now, body.frequency),
     }
     await db.memberships.update_one({"user_id": user["id"]}, {"$set": doc}, upsert=True)
-    return {"membership": await build_membership(user["id"])}
+    await _open_payment_request(user, amount, body.frequency, body.method, "membership")
+    return {"membership": await build_membership(user["id"]), "awaiting_confirmation": True}
 
 
 @api_router.post("/membership/cancel")
@@ -413,20 +451,14 @@ async def self_report(body: SelfReportBody, user: dict = Depends(get_current_use
         "currency": "USD",
         "frequency": None,
         "method": body.method,
-        "status": "confirmed",
+        "status": "pending",
         "user_id": user["id"],
         "user_email": user["email"],
         "user_name": user["name"],
     })
-    # advance next tribute date on the membership
-    m = await db.memberships.find_one({"user_id": user["id"]})
-    if m and m.get("active"):
-        now = datetime.now(timezone.utc)
-        await db.memberships.update_one(
-            {"user_id": user["id"]},
-            {"$set": {"next_tribute_date": next_date_from(now, m.get("frequency", "monthly"))}},
-        )
-    return {"tribute": tribute, "membership": await build_membership(user["id"])}
+    # The next tribute date only advances once the creator confirms the payment.
+    await _open_payment_request(user, round(body.amount, 2), None, body.method, "tribute", tribute["id"])
+    return {"tribute": tribute, "membership": await build_membership(user["id"]), "awaiting_confirmation": True}
 
 
 # ---------------------------------------------------------------------------
@@ -637,9 +669,39 @@ async def creator_request_action(req_id: str, action: str, admin: dict = Depends
     if action not in ("approve", "decline"):
         raise HTTPException(status_code=400, detail="Invalid action")
     status = "approved" if action == "approve" else "declined"
-    res = await db.creator_requests.update_one({"id": req_id}, {"$set": {"status": status}})
-    if res.matched_count == 0:
+    req = await db.creator_requests.find_one({"id": req_id})
+    if not req:
         raise HTTPException(status_code=404, detail="Request not found")
+    await db.creator_requests.update_one({"id": req_id}, {"$set": {"status": status}})
+
+    # A payment-confirmation card settles the membership / tribute it points at.
+    if req.get("user_id") and req.get("kind"):
+        now = datetime.now(timezone.utc)
+        if req["kind"] == "membership":
+            if action == "approve":
+                await db.memberships.update_one(
+                    {"user_id": req["user_id"]},
+                    {"$set": {"active": True, "awaiting_confirmation": False,
+                              "confirmed_at": now.isoformat(),
+                              "next_tribute_date": next_date_from(now, req.get("frequency") or "monthly")}},
+                )
+            else:
+                await db.memberships.update_one(
+                    {"user_id": req["user_id"]},
+                    {"$set": {"active": False, "awaiting_confirmation": False}},
+                )
+        elif req["kind"] == "tribute" and req.get("tribute_id"):
+            await db.tributes.update_one(
+                {"id": req["tribute_id"]},
+                {"$set": {"status": "confirmed" if action == "approve" else "declined"}},
+            )
+            if action == "approve":
+                m = await db.memberships.find_one({"user_id": req["user_id"]})
+                if m and m.get("active"):
+                    await db.memberships.update_one(
+                        {"user_id": req["user_id"]},
+                        {"$set": {"next_tribute_date": next_date_from(now, m.get("frequency", "monthly"))}},
+                    )
     remaining = await db.creator_requests.count_documents({"status": "pending"})
     return {"ok": True, "status": status, "pending": remaining}
 

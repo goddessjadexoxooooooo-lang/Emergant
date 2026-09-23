@@ -25,7 +25,7 @@ export default function TributeFlow({ oneTime = false }) {
   const presetFreq = params.get("frequency");
   const [amount, setAmount] = useState(Number.isFinite(presetAmount) ? presetAmount : 50);
   const [frequency, setFrequency] = useState(oneTime ? "one-time" : (presetFreq || "monthly"));
-  const [methodKey, setMethodKey] = useState("stripe");
+  const [methodKey, setMethodKey] = useState("paypal");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
 
@@ -44,8 +44,7 @@ export default function TributeFlow({ oneTime = false }) {
         setDone({ amount, frequency });
       } else {
         await api.post("/membership/setup", { amount, frequency, method: methodKey });
-        toast.success("Your devotion has begun. 🖤");
-        navigate("/dashboard");
+        setDone({ amount, frequency });
       }
     } catch { toast.error("Something went wrong. Please try again."); setBusy(false); }
   };
@@ -59,8 +58,8 @@ export default function TributeFlow({ oneTime = false }) {
             className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-primary text-primary-foreground shadow-jade-lg">
             <Check className="h-10 w-10" />
           </motion.div>
-          <h1 className="mt-8 font-display text-4xl font-bold">Tribute received</h1>
-          <p className="mt-3 text-lg text-muted-foreground">Thank you for your ${done.amount.toFixed(2)} tribute to your Goddess.</p>
+          <h1 className="mt-8 font-display text-4xl font-bold">Almost there</h1>
+          <p className="mt-3 text-lg text-muted-foreground">Please finish your ${done.amount.toFixed(2)} payment in the PayPal tab that just opened. Your Goddess will confirm it, and your membership starts the moment she does.</p>
           <Button data-testid="checkout-done-btn" onClick={() => navigate(user ? "/dashboard" : "/")}
             className="mt-10 h-12 rounded-full px-7 shadow-jade">{user ? "View my membership" : "Back home"}</Button>
         </div>

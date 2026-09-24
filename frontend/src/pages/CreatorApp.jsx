@@ -182,6 +182,11 @@ function HomeTab({ go }) {
       <div>
         <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-primary">Recent payments</p>
         <div className="rounded-3xl bg-card p-2 shadow-jade" data-testid="recent-payments">
+          {data.recent_payments.length === 0 && (
+            <p className="px-3 py-6 text-center text-sm text-muted-foreground" data-testid="recent-payments-empty">
+              No confirmed payments yet. Payments you approve on your Requests screen will show here.
+            </p>
+          )}
           {data.recent_payments.map((p, i) => (
             <div key={p.id} className={`flex items-center gap-3.5 px-3 py-3.5 ${i > 0 ? "border-t border-border/70" : ""}`}>
               <span className="grid h-10 w-10 place-items-center rounded-full bg-primary/10 text-primary">

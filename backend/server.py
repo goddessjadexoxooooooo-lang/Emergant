@@ -645,18 +645,71 @@ class PlanPriceBody(BaseModel):
     price: float
 
 
+# Maps a member's chosen frequency to the creator-side plan cadence it belongs to.
+CADENCE_FREQ = {"every 2 weeks": "bi-weekly", "monthly": "monthly", "weekly": "weekly", "special tribute": "one-time"}
+
+
+def _parse_ts(value):
+    try:
+        dt = datetime.fromisoformat(value)
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def _when(dt, now):
+    if not dt:
+        return ""
+    secs = (now - dt).total_seconds()
+    if secs < 3600:
+        return f"{max(int(secs // 60), 1)}m ago"
+    if secs < 86400:
+        return f"{int(secs // 3600)}h ago"
+    if secs < 172800:
+        return "Yesterday"
+    return f"{int(secs // 86400)}d ago"
+
+
+async def _confirmed_payments():
+    """Real payments the creator has confirmed on the Requests screen, newest first.
+
+    Tribute approvals mark the tribute 'confirmed'; membership approvals mark the
+    payment request 'approved'. Unconfirmed / declined payments are never counted.
+    """
+    out = []
+    async for t in db.tributes.find({"status": "confirmed"}, {"_id": 0}):
+        out.append({"id": t["id"], "name": t.get("user_name") or t.get("user_email") or "Member",
+                    "method": t.get("method") or "", "amount": t.get("amount", 0),
+                    "at": _parse_ts(t.get("confirmed_at") or t.get("created_at"))})
+    async for r in db.creator_requests.find({"kind": "membership", "status": "approved"}, {"_id": 0}):
+        out.append({"id": r["id"], "name": r.get("name") or "Member", "method": r.get("method") or "",
+                    "amount": r.get("amount", 0), "at": _parse_ts(r.get("decided_at") or r.get("created_at"))})
+    epoch = datetime.min.replace(tzinfo=timezone.utc)
+    out.sort(key=lambda p: p["at"] or epoch, reverse=True)
+    return out
+
+
 @api_router.get("/creator/home")
 async def creator_home(admin: dict = Depends(require_admin)):
+    now = datetime.now(timezone.utc)
     plans = await db.creator_plans.find({}, {"_id": 0}).to_list(50)
-    payments = await db.creator_payments.find({}, {"_id": 0}).sort("sort", 1).to_list(50)
-    active = await db.creator_subscribers.count_documents({})
+    active_members = await db.memberships.find({"active": True}, {"_id": 0, "frequency": 1}).to_list(5000)
+    for pl in plans:
+        freq = CADENCE_FREQ.get((pl.get("cadence") or "").lower())
+        pl["subscribers"] = sum(1 for m in active_members if freq and m.get("frequency") == freq)
+    payments = await _confirmed_payments()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    week_ago = now - timedelta(days=7)
+    revenue = sum(p["amount"] for p in payments if p["at"] and p["at"] >= month_start)
+    this_week = sum(1 for p in payments if p["at"] and p["at"] >= week_ago)
+    recent = [{"id": p["id"], "name": p["name"], "method": p["method"], "amount": p["amount"],
+               "when": _when(p["at"], now)} for p in payments[:5]]
     pending = await db.creator_requests.count_documents({"status": "pending"})
-    revenue = sum(p["amount"] for p in payments)
     return {
-        "stats": {"active_subscribers": active, "payments_this_week": len(payments)},
-        "revenue_total": revenue,
+        "stats": {"active_subscribers": len(active_members), "payments_this_week": this_week},
+        "revenue_total": round(revenue, 2),
         "pending_requests": pending,
-        "recent_payments": payments,
+        "recent_payments": recent,
         "plans": plans,
         "plans_active": len(plans),
     }
@@ -676,7 +729,7 @@ async def creator_request_action(req_id: str, action: str, admin: dict = Depends
     req = await db.creator_requests.find_one({"id": req_id})
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
-    await db.creator_requests.update_one({"id": req_id}, {"$set": {"status": status}})
+    await db.creator_requests.update_one({"id": req_id}, {"$set": {"status": status, "decided_at": datetime.now(timezone.utc).isoformat()}})
 
     # A payment-confirmation card settles the membership / tribute it points at.
     if req.get("user_id") and req.get("kind"):
@@ -697,7 +750,7 @@ async def creator_request_action(req_id: str, action: str, admin: dict = Depends
         elif req["kind"] == "tribute" and req.get("tribute_id"):
             await db.tributes.update_one(
                 {"id": req["tribute_id"]},
-                {"$set": {"status": "confirmed" if action == "approve" else "declined"}},
+                {"$set": {"status": "confirmed" if action == "approve" else "declined", "confirmed_at": now.isoformat()}},
             )
             if action == "approve":
                 m = await db.memberships.find_one({"user_id": req["user_id"]})

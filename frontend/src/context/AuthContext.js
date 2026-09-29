@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback } from "rea
 import api, { formatApiError } from "@/lib/api";
 
 const AuthContext = createContext(null);
+const TOKEN_KEY = "jade_access_token";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null); // null = checking, false = anon, object = authed
@@ -11,7 +12,10 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await api.get("/auth/me");
       setUser(data);
-    } catch {
+    } catch (error) {
+      if (error.response?.status === 401) {
+        window.sessionStorage.removeItem(TOKEN_KEY);
+      }
       setUser(false);
     } finally {
       setLoading(false);
@@ -29,6 +33,7 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     try {
       const { data } = await api.post("/auth/login", { email, password });
+      window.sessionStorage.setItem(TOKEN_KEY, data.token);
       setUser(data.user);
       return { ok: true, user: data.user };
     } catch (e) {
@@ -39,6 +44,7 @@ export function AuthProvider({ children }) {
   const register = async (name, email, password) => {
     try {
       const { data } = await api.post("/auth/register", { name, email, password });
+      window.sessionStorage.setItem(TOKEN_KEY, data.token);
       setUser(data.user);
       return { ok: true, user: data.user };
     } catch (e) {
@@ -48,12 +54,14 @@ export function AuthProvider({ children }) {
 
   const loginWithSession = async (session_id) => {
     const { data } = await api.post("/auth/session", { session_id });
+    window.sessionStorage.setItem(TOKEN_KEY, data.token);
     setUser(data.user);
     return data.user;
   };
 
   const logout = async () => {
     try { await api.post("/auth/logout"); } catch { /* ignore */ }
+    window.sessionStorage.removeItem(TOKEN_KEY);
     setUser(false);
   };
 
